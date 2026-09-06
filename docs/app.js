@@ -64,15 +64,25 @@ function resizeImageToDataUrl(file, maxDimension) {
 }
 
 function buildAttachUI() {
-  if (!form) return;
+  if (!form || !input) return;
+
+  // Оборачиваем textarea, чтобы разместить скрепку абсолютным позиционированием
+  // внутри самого поля, у правого края — а не отдельной кнопкой снаружи.
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:relative;flex:1;display:flex;min-width:0;";
+  input.parentNode.insertBefore(wrapper, input);
+  wrapper.appendChild(input);
+  input.style.flex = "1";
+  input.style.boxSizing = "border-box";
+  input.style.paddingRight = "38px";
 
   const attachBtn = document.createElement("button");
   attachBtn.type = "button";
   attachBtn.title = "прикрепить фото";
   attachBtn.style.cssText =
-    "background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:6px;line-height:0;flex-shrink:0;";
+    "position:absolute;right:4px;bottom:6px;background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:5px;line-height:0;";
   attachBtn.innerHTML =
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M17 7l-7.5 7.5a2.5 2.5 0 0 0 3.5 3.5L20 11a5 5 0 0 0-7-7L6 11a3.5 3.5 0 0 0 5 5l6-6" /></svg>';
 
   const fileInput = document.createElement("input");
@@ -117,8 +127,8 @@ function buildAttachUI() {
     previewBar.style.display = "none";
   });
 
-  form.insertBefore(attachBtn, form.firstChild);
-  form.appendChild(fileInput);
+  wrapper.appendChild(attachBtn);
+  wrapper.appendChild(fileInput);
   if (form.parentElement) form.parentElement.insertBefore(previewBar, form);
 }
 
@@ -1123,7 +1133,7 @@ function ensureDevPanelContainers() {
   const baseStyle =
     "position:fixed;top:64px;max-height:70vh;width:190px;overflow-y:auto;" +
     "background:rgba(29,22,32,0.94);border:1px solid #362a37;border-radius:14px;" +
-    "padding:12px;font-size:12px;line-height:1.5;color:#f4eef2;z-index:500;box-sizing:border-box;";
+    "padding:12px;font-size:12px;line-height:1.5;color:#f4eef2;z-index:1;box-sizing:border-box;";
 
   if (!left) {
     left = document.createElement("div");
@@ -1141,13 +1151,17 @@ function ensureDevPanelContainers() {
 }
 
 // Строка "потрачено N / M токенов" под email в профиле.
+// Условная оценка "сколько сообщений хватит" — по среднему расходу
+// ~100 токенов на сообщение (как и общий расчёт бюджета сайта).
+const ASSUMED_TOKENS_PER_MESSAGE = 100;
+
 async function refreshMyUsage() {
   if (!isLoggedIn()) return;
   let usageEl = document.getElementById("usageInfo");
   if (!usageEl && profileEmailEl && profileEmailEl.parentElement) {
     usageEl = document.createElement("div");
     usageEl.id = "usageInfo";
-    usageEl.style.cssText = "font-size:12px;color:#9a8b98;margin-top:2px;";
+    usageEl.style.cssText = "margin-top:8px;";
     profileEmailEl.insertAdjacentElement("afterend", usageEl);
   }
   if (!usageEl) return;
@@ -1155,16 +1169,58 @@ async function refreshMyUsage() {
     const res = await fetch(`${API_BASE}/my-usage`, { headers: authHeaders() });
     const data = await res.json();
     if (data.error) return;
-    if (data.tier === "unlimited") {
-      usageEl.textContent = "лимит токенов: безлимит";
-    } else if (data.tier === "total") {
-      usageEl.textContent = `потрачено: ${data.tokensUsedTotal} / ${data.totalBudget} токенов`;
-    } else {
-      usageEl.textContent = `сегодня: ${data.tokensUsedToday} / ${data.dailyBudget} токенов`;
-    }
+    renderUsageGauge(usageEl, data);
   } catch (err) {
     // тихо промолчим
   }
+}
+
+function renderUsageGauge(container, data) {
+  container.innerHTML = "";
+
+  if (data.tier === "unlimited") {
+    const bar = document.createElement("div");
+    bar.style.cssText =
+      "height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;" +
+      "font-size:11px;color:rgba(244,238,242,0.85);" +
+      "background:linear-gradient(90deg, rgba(185,232,166,0.5), rgba(185,232,166,0.2), rgba(185,232,166,0.5));";
+    bar.textContent = "безлимит";
+    container.appendChild(bar);
+    return;
+  }
+
+  const budget = data.tier === "total" ? data.totalBudget : data.dailyBudget;
+  const used = data.tier === "total" ? data.tokensUsedTotal : data.tokensUsedToday;
+  const remaining = Math.max(0, budget - used);
+  const remainingPct = budget > 0 ? (remaining / budget) * 100 : 0;
+  const usedPct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 100;
+  const estLeft = Math.max(0, Math.round(remaining / ASSUMED_TOKENS_PER_MESSAGE));
+
+  let colorRgb = "185,232,166"; // зелёный — всё в порядке
+  if (remainingPct < 7) {
+    colorRgb = "232,138,154"; // красный — меньше 7% лимита осталось
+  } else if (remainingPct < 15) {
+    colorRgb = "232,214,138"; // жёлтый — меньше 15% лимита осталось
+  }
+
+  const track = document.createElement("div");
+  track.style.cssText =
+    "position:relative;height:22px;border-radius:11px;overflow:hidden;background:rgba(0,0,0,0.25);";
+
+  const fill = document.createElement("div");
+  fill.style.cssText =
+    `width:${usedPct}%;height:100%;` +
+    `background:linear-gradient(90deg, rgba(${colorRgb},0.55), rgba(${colorRgb},0.22), rgba(${colorRgb},0.55));`;
+
+  const label = document.createElement("div");
+  label.style.cssText =
+    "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
+    "font-size:11px;color:rgba(244,238,242,0.8);white-space:nowrap;pointer-events:none;";
+  label.textContent = `${used} / ${budget} токенов (≈${estLeft} сообщ.)`;
+
+  track.appendChild(fill);
+  track.appendChild(label);
+  container.appendChild(track);
 }
 
 function devInputStyle() {
