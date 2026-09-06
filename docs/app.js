@@ -27,6 +27,103 @@
 const chat = document.getElementById("chat");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
+
+// ===== Прикрепление фото к сообщению (скрепка в composer) =====
+const MAX_IMAGE_DIMENSION = 1280;
+let pendingImage = null; // dataURL текущего прикреплённого фото
+let attachPreviewBarEl = null;
+
+function resizeImageToDataUrl(file, maxDimension) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("decode failed"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function buildAttachUI() {
+  if (!form) return;
+
+  const attachBtn = document.createElement("button");
+  attachBtn.type = "button";
+  attachBtn.title = "прикрепить фото";
+  attachBtn.style.cssText =
+    "background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:6px;line-height:0;flex-shrink:0;";
+  attachBtn.innerHTML =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17 7l-7.5 7.5a2.5 2.5 0 0 0 3.5 3.5L20 11a5 5 0 0 0-7-7L6 11a3.5 3.5 0 0 0 5 5l6-6" /></svg>';
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file";
+  fileInput.accept = "image/*";
+  fileInput.style.display = "none";
+
+  const previewBar = document.createElement("div");
+  previewBar.id = "attachPreview";
+  previewBar.style.cssText =
+    "display:none;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:#1d1620;border:1px solid #362a37;border-radius:10px;";
+
+  const previewImg = document.createElement("img");
+  previewImg.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:6px;";
+
+  const previewRemove = document.createElement("button");
+  previewRemove.type = "button";
+  previewRemove.textContent = "убрать фото";
+  previewRemove.style.cssText = "background:transparent;border:none;color:#9a8b98;cursor:pointer;font-size:12px;";
+
+  previewBar.appendChild(previewImg);
+  previewBar.appendChild(previewRemove);
+  attachPreviewBarEl = previewBar;
+
+  attachBtn.addEventListener("click", () => fileInput.click());
+
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    resizeImageToDataUrl(file, MAX_IMAGE_DIMENSION)
+      .then((dataUrl) => {
+        pendingImage = dataUrl;
+        previewImg.src = dataUrl;
+        previewBar.style.display = "flex";
+      })
+      .catch(() => alert("не удалось прочитать фото"));
+    fileInput.value = "";
+  });
+
+  previewRemove.addEventListener("click", () => {
+    pendingImage = null;
+    previewBar.style.display = "none";
+  });
+
+  form.insertBefore(attachBtn, form.firstChild);
+  form.appendChild(fileInput);
+  if (form.parentElement) form.parentElement.insertBefore(previewBar, form);
+}
+
+buildAttachUI();
+
 const chatsToggle = document.getElementById("chatsToggle");
 const chatsPanel = document.getElementById("chatsPanel");
 const chatsListEl = document.getElementById("chatsList");
@@ -1461,7 +1558,17 @@ function addMessageToDOM(role, text, opts = {}) {
 
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
-  bubble.textContent = text;
+  if (opts.image) {
+    const img = document.createElement("img");
+    img.src = opts.image;
+    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (text ? "margin-bottom:6px;" : "");
+    bubble.appendChild(img);
+  }
+  if (text) {
+    const textEl = document.createElement("div");
+    textEl.textContent = text;
+    bubble.appendChild(textEl);
+  }
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
@@ -1473,10 +1580,20 @@ function addMessageToDOM(role, text, opts = {}) {
     feedbackBar.style.marginTop = "4px";
 
     const iconBtnStyle =
-      "background:transparent;border:none;color:#9a8b98;font-size:14px;cursor:pointer;padding:3px 7px;border-radius:6px;line-height:1;";
+      "background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:4px 6px;border-radius:6px;line-height:0;";
+
+    function thumbIconSvg(flipped) {
+      const transform = flipped ? "transform:rotate(180deg);" : "";
+      return (
+        `<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" ` +
+        `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:block;${transform}">` +
+        `<path d="M6 18H4a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h2m0 8V10m0 8h8.5a1.5 1.5 0 0 0 1.47-1.21l1.2-6A1.5 1.5 0 0 0 15.7 9H11l.6-3.2a1.4 1.4 0 0 0-2.5-1.1L6 10" />` +
+        `</svg>`
+      );
+    }
 
     const up = document.createElement("button");
-    up.innerHTML = "▲";
+    up.innerHTML = thumbIconSvg(false);
     up.title = "нравится";
     up.style.cssText = iconBtnStyle;
     up.addEventListener("click", () => {
@@ -1487,7 +1604,7 @@ function addMessageToDOM(role, text, opts = {}) {
     });
 
     const down = document.createElement("button");
-    down.innerHTML = "▼";
+    down.innerHTML = thumbIconSvg(true);
     down.title = "не нравится";
     down.style.cssText = iconBtnStyle;
     down.addEventListener("click", () => {
@@ -1523,7 +1640,7 @@ function renderMessages() {
     addMessageToDOM("assistant", tr("greeting"));
     return;
   }
-  c.messages.forEach((m) => addMessageToDOM(m.role, m.content, { proactive: m.proactive }));
+  c.messages.forEach((m) => addMessageToDOM(m.role, m.content, { proactive: m.proactive, image: m.image }));
 }
 
 function looksLikeFlairOff(text) {
@@ -1569,10 +1686,14 @@ async function sendMessage(text) {
     if (isLoggedIn()) updateChatMeta(c.id, { proactiveOff: true });
   }
 
-  c.messages.push({ role: "user", content: text });
+  const imageToSend = pendingImage;
+  pendingImage = null;
+  if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
+
+  c.messages.push({ role: "user", content: text, image: imageToSend || undefined });
   let titleChanged = false;
   if (c.messages.length === 1) {
-    c.title = text.slice(0, 30);
+    c.title = text.slice(0, 30) || "фото";
     titleChanged = true;
   }
 
@@ -1583,7 +1704,7 @@ async function sendMessage(text) {
   }
   incrementDailyUsage(limitKey);
 
-  addMessageToDOM("user", text);
+  addMessageToDOM("user", text, { image: imageToSend });
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -1610,9 +1731,22 @@ async function sendMessage(text) {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
-        messages: c.messages.map((m) => ({ role: m.role, content: m.content })),
-        disableFlair: looksLikeFlairOff(text),
-        reactionNote: pendingReactionNote,
+        messages: c.messages.map((m, idx, arr) => {
+          const isLast = idx === arr.length - 1;
+          if (m.image && isLast) {
+            return {
+              role: m.role,
+              content: [
+                { type: "text", text: m.content || "" },
+                { type: "image_url", image_url: { url: m.image } },
+              ],
+            };
+          }
+          if (m.image && !isLast) {
+            return { role: m.role, content: (m.content ? m.content + " " : "") + "[фото]" };
+          }
+          return { role: m.role, content: m.content };
+        }),
       }),
     });
     pendingReactionNote = null;
@@ -1706,15 +1840,17 @@ async function checkProactive() {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text) return;
+  if (!text && !pendingImage) return;
   input.value = "";
   input.style.height = "auto";
 
-  const unlocked = await tryUnlock(text);
-  if (unlocked) return;
+  if (text) {
+    const unlocked = await tryUnlock(text);
+    if (unlocked) return;
 
-  const redeemed = await tryRedeemCode(text);
-  if (redeemed) return;
+    const redeemed = await tryRedeemCode(text);
+    if (redeemed) return;
+  }
 
   let finalText = text;
   if (pendingQuote) {
