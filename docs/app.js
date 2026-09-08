@@ -1,29 +1,3 @@
-// ===== ВРЕМЕННЫЙ перехватчик ошибок — показывает JS-ошибки прямо на экране,
-// потому что на планшете без devtools их иначе не увидеть. Убрать после
-// того, как найдём и починим баг с зависающей отправкой сообщений. =====
-(function () {
-  function showJsError(msg) {
-    let el = document.getElementById("jsErrorBanner");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "jsErrorBanner";
-      el.style.cssText =
-        "position:fixed;bottom:70px;left:8px;right:8px;background:#5a1a1a;color:#fff;" +
-        "padding:10px;border-radius:8px;font-size:12px;z-index:99999;white-space:pre-wrap;" +
-        "max-height:160px;overflow-y:auto;font-family:monospace;box-shadow:0 0 0 2px #ff6b6b;";
-      document.body.appendChild(el);
-    }
-    el.textContent += (el.textContent ? "\n---\n" : "") + msg;
-  }
-  window.addEventListener("error", (e) => {
-    showJsError(`JS error: ${e.message}\n(${e.filename}:${e.lineno}:${e.colno})`);
-  });
-  window.addEventListener("unhandledrejection", (e) => {
-    const reason = e.reason && e.reason.message ? e.reason.message : String(e.reason);
-    showJsError(`Promise error: ${reason}`);
-  });
-})();
-
 const chat = document.getElementById("chat");
 const form = document.getElementById("composer");
 const input = document.getElementById("input");
@@ -1936,6 +1910,7 @@ async function sendMessage(text) {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
+        chatId: c.id,
         messages: c.messages.map((m, idx, arr) => {
           const isLast = idx === arr.length - 1;
           if (m.image && isLast) {
