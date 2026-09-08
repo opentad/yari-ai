@@ -80,7 +80,7 @@ function buildAttachUI() {
   attachBtn.type = "button";
   attachBtn.title = "прикрепить фото";
   attachBtn.style.cssText =
-    "position:absolute;right:4px;bottom:6px;background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:5px;line-height:0;";
+    "position:absolute;right:4px;bottom:6px;background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:5px;line-height:0;";
   attachBtn.innerHTML =
     '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M17 7l-7.5 7.5a2.5 2.5 0 0 0 3.5 3.5L20 11a5 5 0 0 0-7-7L6 11a3.5 3.5 0 0 0 5 5l6-6" /></svg>';
@@ -93,7 +93,7 @@ function buildAttachUI() {
   const previewBar = document.createElement("div");
   previewBar.id = "attachPreview";
   previewBar.style.cssText =
-    "display:none;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:#1d1620;border:1px solid #362a37;border-radius:10px;";
+    "display:none;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:10px;";
 
   const previewImg = document.createElement("img");
   previewImg.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:6px;";
@@ -101,7 +101,7 @@ function buildAttachUI() {
   const previewRemove = document.createElement("button");
   previewRemove.type = "button";
   previewRemove.textContent = "убрать фото";
-  previewRemove.style.cssText = "background:transparent;border:none;color:#9a8b98;cursor:pointer;font-size:12px;";
+  previewRemove.style.cssText = "background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;";
 
   previewBar.appendChild(previewImg);
   previewBar.appendChild(previewRemove);
@@ -166,6 +166,123 @@ const quotePreview = document.getElementById("quotePreview");
 const quotePreviewText = document.getElementById("quotePreviewText");
 const quotePreviewClose = document.getElementById("quotePreviewClose");
 
+// ===== Тема (светлая/тёмная) =====
+// Хранится в localStorage, применяется атрибутом data-theme на <html>,
+// от которого зависят все цветовые CSS-переменные (см. :root /
+// [data-theme="light"] в style.css). Переключение сопровождается
+// анимацией расширяющегося круга от точки нажатия на кнопку.
+
+const THEME_KEY = "yari_theme";
+const THEME_BASE_COLOR = { dark: "#110d13", light: "#ffffff" };
+
+function getTheme() {
+  return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+}
+
+function sunIconSvg(color) {
+  return (
+    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
+    `<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>`
+  );
+}
+
+function moonIconSvg(color) {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 1 0 10.5 10.5z"/></svg>`;
+}
+
+// Тёмная тема → иконка солнышка на градиентной кнопке (как "создать код").
+// Светлая тема → иконка голубой луны на обычной прозрачной кнопке.
+function updateThemeToggleBtn(theme) {
+  const btn = document.getElementById("themeToggleBtn");
+  if (!btn) return;
+  const icon = btn.querySelector(".theme-toggle-icon");
+  const label = btn.querySelector(".theme-toggle-label");
+  if (theme === "dark") {
+    btn.style.background = "linear-gradient(135deg, var(--peach), var(--lavender))";
+    btn.style.borderColor = "transparent";
+    if (icon) icon.innerHTML = sunIconSvg("var(--on-accent)");
+    if (label) {
+      label.textContent = tr("themeLight");
+      label.style.color = "var(--on-accent)";
+    }
+  } else {
+    btn.style.background = "transparent";
+    btn.style.borderColor = "var(--panther-line)";
+    if (icon) icon.innerHTML = moonIconSvg("var(--cyber-blue)");
+    if (label) {
+      label.textContent = tr("themeDark");
+      label.style.color = "var(--text-dim)";
+    }
+  }
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem(THEME_KEY, theme);
+  updateThemeToggleBtn(theme);
+}
+
+// Оверлей закрашивается цветом НОВОЙ темы и расширяется кругом от точки
+// нажатия (clip-path). Как только круг закрывает весь экран — тема
+// переключается мгновенно у него "под низом", а сам оверлей тут же
+// растворяется, открывая уже переключённый интерфейс.
+function runThemeTransition(e) {
+  const nextTheme = getTheme() === "dark" ? "light" : "dark";
+  const rect = e.currentTarget.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const maxRadius = Math.hypot(
+    Math.max(cx, window.innerWidth - cx),
+    Math.max(cy, window.innerHeight - cy)
+  );
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    `position:fixed;inset:0;z-index:9998;pointer-events:none;` +
+    `background:${THEME_BASE_COLOR[nextTheme]};` +
+    `clip-path:circle(0px at ${cx}px ${cy}px);` +
+    `transition:clip-path 0.5s ease;`;
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    overlay.style.clipPath = `circle(${maxRadius}px at ${cx}px ${cy}px)`;
+  });
+
+  overlay.addEventListener("transitionend", function onEnd() {
+    overlay.removeEventListener("transitionend", onEnd);
+    applyTheme(nextTheme);
+    overlay.style.transition = "opacity 0.25s ease";
+    overlay.style.opacity = "0";
+    setTimeout(() => overlay.remove(), 260);
+  });
+}
+
+function buildThemeToggle() {
+  if (document.getElementById("themeToggleBtn") || !profileToggle || !profileToggle.parentNode) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.id = "themeToggleBtn";
+  btn.className = "theme-toggle-btn";
+
+  const icon = document.createElement("span");
+  icon.className = "theme-toggle-icon";
+  icon.style.cssText = "display:inline-flex;line-height:0;";
+
+  const label = document.createElement("span");
+  label.className = "theme-toggle-label";
+
+  btn.appendChild(icon);
+  btn.appendChild(label);
+  btn.addEventListener("click", runThemeTransition);
+
+  profileToggle.parentNode.insertBefore(btn, profileToggle);
+  updateThemeToggleBtn(getTheme());
+}
+
+// Применяем тему сразу при загрузке скрипта (до первой отрисовки),
+// чтобы не было "вспышки" неправильной темы.
+applyTheme(getTheme());
+
 // ===== Локализация (ru / en) =====
 
 const I18N = {
@@ -200,6 +317,8 @@ const I18N = {
     msgCopy: "копировать",
     msgReply: "ответить",
     quoteCancel: "отменить цитату",
+    themeLight: "светлая тема",
+    themeDark: "тёмная тема",
   },
   en: {
     chatsToggle: "chats ▾",
@@ -232,6 +351,8 @@ const I18N = {
     msgCopy: "copy",
     msgReply: "reply",
     quoteCancel: "cancel quote",
+    themeLight: "light theme",
+    themeDark: "dark theme",
   },
 };
 
@@ -301,6 +422,7 @@ function applyLanguage() {
   if (quotePreviewClose) quotePreviewClose.setAttribute("aria-label", tr("quoteCancel"));
   if (!isLoggedIn() && profileEmailEl) profileEmailEl.textContent = tr("guestUser");
 
+  updateThemeToggleBtn(getTheme());
   setStatus(false);
 }
 
@@ -640,6 +762,7 @@ function renderProfileIdentity() {
     if (profileEmailEl) profileEmailEl.textContent = tr("guestUser");
     if (profileEditBtn) profileEditBtn.style.display = "none";
     if (profileEditMenu) profileEditMenu.classList.remove("open");
+    removeUsageBlock();
   }
 
   if (profileLogoutBtn) profileLogoutBtn.style.display = isLoggedIn() ? "inline-flex" : "none";
@@ -1132,8 +1255,8 @@ function ensureDevPanelContainers() {
   let right = document.getElementById("devPanelRight");
   const baseStyle =
     "position:fixed;top:64px;max-height:70vh;width:190px;overflow-y:auto;" +
-    "background:rgba(29,22,32,0.94);border:1px solid #362a37;border-radius:14px;" +
-    "padding:12px;font-size:12px;line-height:1.5;color:#f4eef2;z-index:1;box-sizing:border-box;";
+    "background:var(--devpanel-bg);border:1px solid var(--panther-line);border-radius:14px;" +
+    "padding:12px;font-size:12px;line-height:1.5;color:var(--text);z-index:1;box-sizing:border-box;";
 
   if (!left) {
     left = document.createElement("div");
@@ -1150,28 +1273,54 @@ function ensureDevPanelContainers() {
   return { left, right };
 }
 
-// Строка "потрачено N / M токенов" под email в профиле.
-// Условная оценка "сколько сообщений хватит" — по среднему расходу
-// ~100 токенов на сообщение (как и общий расчёт бюджета сайта).
+// Строка "потрачено N / M токенов" под email в профиле — постоянный блок,
+// всегда занимает своё место (loading → данные, либо явная ошибка вместо
+// того, чтобы молча остаться пустым местом).
 const ASSUMED_TOKENS_PER_MESSAGE = 100;
 
-async function refreshMyUsage() {
-  if (!isLoggedIn()) return;
+function ensureUsageBlock() {
   let usageEl = document.getElementById("usageInfo");
   if (!usageEl && profileEmailEl && profileEmailEl.parentElement) {
     usageEl = document.createElement("div");
     usageEl.id = "usageInfo";
-    usageEl.style.cssText = "margin-top:8px;";
+    usageEl.style.cssText = "margin-top:8px;width:100%;";
     profileEmailEl.insertAdjacentElement("afterend", usageEl);
   }
+  return usageEl;
+}
+
+function removeUsageBlock() {
+  const usageEl = document.getElementById("usageInfo");
+  if (usageEl) usageEl.remove();
+}
+
+function renderUsagePlaceholder(container, text) {
+  container.innerHTML = "";
+  const bar = document.createElement("div");
+  bar.style.cssText =
+    "height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;" +
+    "font-size:11px;color:var(--text-dim);border:1px solid var(--panther-line);background:var(--panther-soft);";
+  bar.textContent = text;
+  container.appendChild(bar);
+}
+
+async function refreshMyUsage() {
+  if (!isLoggedIn()) return;
+  const usageEl = ensureUsageBlock();
   if (!usageEl) return;
+
+  renderUsagePlaceholder(usageEl, "загружаю лимит…");
+
   try {
     const res = await fetch(`${API_BASE}/my-usage`, { headers: authHeaders() });
-    const data = await res.json();
-    if (data.error) return;
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.error) {
+      renderUsagePlaceholder(usageEl, "лимит: не удалось загрузить");
+      return;
+    }
     renderUsageGauge(usageEl, data);
   } catch (err) {
-    // тихо промолчим
+    renderUsagePlaceholder(usageEl, "лимит: нет соединения");
   }
 }
 
@@ -1224,12 +1373,12 @@ function renderUsageGauge(container, data) {
 }
 
 function devInputStyle() {
-  return "width:100%;padding:6px;margin-bottom:6px;border-radius:6px;border:1px solid #362a37;background:#110d13;color:#f4eef2;box-sizing:border-box;font-size:12px;";
+  return "width:100%;padding:6px;margin-bottom:6px;border-radius:6px;border:1px solid var(--panther-line);background:var(--panther);color:var(--text);box-sizing:border-box;font-size:12px;";
 }
 
 function devLabel(text) {
   const el = document.createElement("div");
-  el.style.cssText = "font-weight:600;font-size:13px;margin-bottom:8px;color:#f4eef2;";
+  el.style.cssText = "font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text);";
   el.textContent = text;
   return el;
 }
@@ -1275,7 +1424,7 @@ function renderCodesBlock(container) {
   const createBtn = document.createElement("button");
   createBtn.textContent = "создать код";
   createBtn.style.cssText =
-    "width:100%;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,#f3a6bd,#b9a6e8);color:#110d13;font-weight:600;cursor:pointer;margin-bottom:12px;font-size:12px;";
+    "width:100%;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;cursor:pointer;margin-bottom:12px;font-size:12px;";
 
   const listBox = document.createElement("div");
 
@@ -1297,7 +1446,7 @@ function renderCodesBlock(container) {
       listBox.innerHTML = "";
       data.codes.forEach((c) => {
         const row = document.createElement("div");
-        row.style.cssText = "padding:6px 0;border-bottom:1px solid #362a37;";
+        row.style.cssText = "padding:6px 0;border-bottom:1px solid var(--panther-line);";
 
         const kindLabel = c.kind === "daily" ? "в день" : c.kind === "total" ? "разово" : "безлимит";
         const info = document.createElement("div");
@@ -1311,7 +1460,7 @@ function renderCodesBlock(container) {
         const toggleBtn = document.createElement("button");
         toggleBtn.textContent = c.active ? "выключить" : "включить";
         toggleBtn.style.cssText =
-          "font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #362a37;background:transparent;color:#f4eef2;cursor:pointer;";
+          "font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
         toggleBtn.addEventListener("click", async () => {
           await fetch(`${API_BASE}/dev/toggle-code`, {
             method: "POST",
@@ -1393,10 +1542,10 @@ function renderStatsBlock(container) {
   gaugeWrap.style.cssText = "margin-bottom:4px;";
   const gaugeBar = document.createElement("div");
   gaugeBar.style.cssText =
-    "height:8px;border-radius:4px;background:#362a37;overflow:hidden;margin-bottom:4px;";
+    "height:8px;border-radius:4px;background:var(--panther-line);overflow:hidden;margin-bottom:4px;";
   const gaugeFill = document.createElement("div");
   gaugeFill.style.cssText =
-    "height:100%;background:linear-gradient(90deg,#f3a6bd,#b9a6e8);width:0%;transition:width 0.3s;";
+    "height:100%;background:linear-gradient(90deg,var(--peach),var(--lavender));width:0%;transition:width 0.3s;";
   gaugeBar.appendChild(gaugeFill);
   gaugeWrap.appendChild(gaugeBar);
 
@@ -1457,7 +1606,7 @@ function appendProblemsBlock(container) {
   const token = localStorage.getItem("yari_token");
 
   const wrap = document.createElement("div");
-  wrap.style.cssText = "margin-top:16px;padding-top:12px;border-top:1px solid #362a37;";
+  wrap.style.cssText = "margin-top:16px;padding-top:12px;border-top:1px solid var(--panther-line);";
   wrap.appendChild(devLabel("проблемы"));
 
   const listBox = document.createElement("div");
@@ -1483,7 +1632,7 @@ function appendProblemsBlock(container) {
       listBox.innerHTML = "";
       data.problems.forEach((p) => {
         const row = document.createElement("div");
-        row.style.cssText = "padding:6px 0;border-bottom:1px solid #362a37;";
+        row.style.cssText = "padding:6px 0;border-bottom:1px solid var(--panther-line);";
 
         const text = document.createElement("div");
         text.style.marginBottom = "4px";
@@ -1493,7 +1642,7 @@ function appendProblemsBlock(container) {
         const dismissBtn = document.createElement("button");
         dismissBtn.textContent = "решено";
         dismissBtn.style.cssText =
-          "font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #362a37;background:transparent;color:#f4eef2;cursor:pointer;";
+          "font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
         dismissBtn.addEventListener("click", async () => {
           await fetch(`${API_BASE}/dev/dismiss-problem`, {
             method: "POST",
@@ -1538,7 +1687,7 @@ function openDislikeReasonPopup(onSubmit) {
 
   const card = document.createElement("div");
   card.style.cssText =
-    "background:#1d1620;border:1px solid #362a37;border-radius:14px;padding:18px;max-width:280px;width:100%;color:#f4eef2;font-family:inherit;box-sizing:border-box;";
+    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:14px;padding:18px;max-width:280px;width:100%;color:var(--text);font-family:inherit;box-sizing:border-box;";
 
   const title = document.createElement("div");
   title.style.cssText = "font-weight:600;font-size:14px;margin-bottom:10px;";
@@ -1556,17 +1705,17 @@ function openDislikeReasonPopup(onSubmit) {
 
   [techBtn, aiBtn].forEach((btn) => {
     btn.style.cssText =
-      "flex:1;padding:8px;border-radius:8px;border:1px solid #362a37;background:transparent;color:#f4eef2;cursor:pointer;font-size:12px;";
+      "flex:1;padding:8px;border-radius:8px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:12px;";
   });
 
   function selectCategory(cat, btn) {
     selectedCategory = cat;
     [techBtn, aiBtn].forEach((b) => {
       b.style.background = "transparent";
-      b.style.color = "#f4eef2";
+      b.style.color = "var(--text)";
     });
-    btn.style.background = "linear-gradient(135deg,#f3a6bd,#b9a6e8)";
-    btn.style.color = "#110d13";
+    btn.style.background = "linear-gradient(135deg,var(--peach),var(--lavender))";
+    btn.style.color = "var(--on-accent)";
   }
   techBtn.addEventListener("click", () => selectCategory("technical", techBtn));
   aiBtn.addEventListener("click", () => selectCategory("ai", aiBtn));
@@ -1578,12 +1727,12 @@ function openDislikeReasonPopup(onSubmit) {
   detailInput.placeholder = "коротко опиши (необязательно)";
   detailInput.rows = 3;
   detailInput.style.cssText =
-    "width:100%;padding:8px;margin-bottom:12px;border-radius:8px;border:1px solid #362a37;background:#110d13;color:#f4eef2;box-sizing:border-box;font-family:inherit;resize:none;";
+    "width:100%;padding:8px;margin-bottom:12px;border-radius:8px;border:1px solid var(--panther-line);background:var(--panther);color:var(--text);box-sizing:border-box;font-family:inherit;resize:none;";
 
   const submitBtn = document.createElement("button");
   submitBtn.textContent = "отправить";
   submitBtn.style.cssText =
-    "width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#f3a6bd,#b9a6e8);color:#110d13;font-weight:600;cursor:pointer;margin-bottom:8px;";
+    "width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;cursor:pointer;margin-bottom:8px;";
   submitBtn.addEventListener("click", () => {
     onSubmit(selectedCategory, detailInput.value.trim());
     overlay.remove();
@@ -1592,7 +1741,7 @@ function openDislikeReasonPopup(onSubmit) {
   const cancelBtn = document.createElement("button");
   cancelBtn.textContent = "отмена";
   cancelBtn.style.cssText =
-    "width:100%;padding:8px;border-radius:10px;border:1px solid #362a37;background:transparent;color:#f4eef2;cursor:pointer;";
+    "width:100%;padding:8px;border-radius:10px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
   cancelBtn.addEventListener("click", () => overlay.remove());
 
   card.appendChild(title);
@@ -1636,7 +1785,7 @@ function addMessageToDOM(role, text, opts = {}) {
     feedbackBar.style.marginTop = "4px";
 
     const iconBtnStyle =
-      "background:transparent;border:none;color:#9a8b98;cursor:pointer;padding:4px 6px;border-radius:6px;line-height:0;";
+      "background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:4px 6px;border-radius:6px;line-height:0;";
 
     function thumbIconSvg(flipped) {
       const transform = flipped ? "transform:rotate(180deg);" : "";
@@ -1656,7 +1805,7 @@ function addMessageToDOM(role, text, opts = {}) {
       sendFeedback(text, "up");
       pendingReactionNote = "пользователь поставил лайк этому твоему ответу.";
       up.style.color = "#b9e8a6";
-      down.style.color = "#9a8b98";
+      down.style.color = "var(--text-dim)";
     });
 
     const down = document.createElement("button");
@@ -1676,7 +1825,7 @@ function addMessageToDOM(role, text, opts = {}) {
           detail ? " — " + detail : ""
         }.`;
         down.style.color = "#e88a9a";
-        up.style.color = "#9a8b98";
+        up.style.color = "var(--text-dim)";
       });
     });
 
@@ -2072,15 +2221,15 @@ function showLanguageWelcomeIfNeeded() {
 
   const card = document.createElement("div");
   card.style.cssText =
-    "background:#1d1620;border:1px solid #362a37;border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:#f4eef2;font-family:inherit;";
+    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:var(--text);font-family:inherit;";
 
   const title = document.createElement("div");
   title.style.cssText =
-    "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;margin-bottom:8px;color:#f4eef2;";
+    "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;margin-bottom:8px;color:var(--text);";
   title.textContent = "Yari";
 
   const text = document.createElement("div");
-  text.style.cssText = "font-size:15px;line-height:1.5;margin-bottom:24px;color:#9a8b98;";
+  text.style.cssText = "font-size:15px;line-height:1.5;margin-bottom:24px;color:var(--text-dim);";
   text.innerHTML = "Welcome! Choose your language.<br>Добро пожаловать! Выберите язык.";
 
   const btnRow = document.createElement("div");
@@ -2097,13 +2246,13 @@ function showLanguageWelcomeIfNeeded() {
   const ruBtn = document.createElement("button");
   ruBtn.textContent = "Русский";
   ruBtn.style.cssText =
-    "flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#f3a6bd,#b9a6e8);color:#110d13;font-weight:600;cursor:pointer;";
+    "flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;cursor:pointer;";
   ruBtn.addEventListener("click", () => chooseLang("ru"));
 
   const enBtn = document.createElement("button");
   enBtn.textContent = "English";
   enBtn.style.cssText =
-    "flex:1;padding:12px;border-radius:10px;border:1px solid #b9a6e8;background:transparent;color:#f4eef2;font-weight:600;cursor:pointer;";
+    "flex:1;padding:12px;border-radius:10px;border:1px solid var(--lavender);background:transparent;color:var(--text);font-weight:600;cursor:pointer;";
   enBtn.addEventListener("click", () => chooseLang("en"));
 
   btnRow.appendChild(ruBtn);
@@ -2142,6 +2291,7 @@ function showLanguageWelcomeIfNeeded() {
 
   renderAuthUI();
   renderProfileIdentity();
+  buildThemeToggle();
 
   // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
   // была объявлена в этой области видимости — это кидало ReferenceError
