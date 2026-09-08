@@ -176,13 +176,17 @@ function updateThemeToggleBtn(theme) {
   const icon = btn.querySelector(".theme-toggle-icon");
   const label = btn.querySelector(".theme-toggle-label");
   if (theme === "dark") {
-    btn.style.color = "var(--peach)";
-    if (icon) icon.innerHTML = sunIconSvg("currentColor");
-    if (label) label.textContent = tr("themeLight");
+    if (icon) icon.innerHTML = sunIconSvg("var(--peach)");
+    if (label) {
+      label.textContent = tr("themeLight");
+      label.style.color = "var(--text)";
+    }
   } else {
-    btn.style.color = "var(--cyber-blue)";
-    if (icon) icon.innerHTML = moonIconSvg("currentColor");
-    if (label) label.textContent = tr("themeDark");
+    if (icon) icon.innerHTML = moonIconSvg("var(--cyber-blue)");
+    if (label) {
+      label.textContent = tr("themeDark");
+      label.style.color = "var(--text)";
+    }
   }
 }
 
@@ -282,7 +286,7 @@ const I18N = {
     changeEmailLabel: "изменить email",
     newEmailPlaceholder: "новый email",
     deleteAccount: "удалить аккаунт",
-    logout: "выйти",
+    logout: "Выйти",
     loginCta: "войти / создать аккаунт",
     composerPlaceholder: "напиши что-нибудь…",
     greeting: "привет. пиши, о чём хотела поговорить — я тут.",
@@ -299,8 +303,8 @@ const I18N = {
     msgCopy: "копировать",
     msgReply: "ответить",
     quoteCancel: "отменить цитату",
-    themeLight: "светлая тема",
-    themeDark: "тёмная тема",
+    themeLight: "Светлая тема",
+    themeDark: "Тёмная тема",
   },
   en: {
     chatsToggle: "chats ▾",
@@ -1735,6 +1739,27 @@ function openDislikeReasonPopup(onSubmit) {
   document.body.appendChild(overlay);
 }
 
+// Иногда Яри может закончить ответ строкой [ВАРИАНТЫ: вариант 1 | вариант 2]
+// (см. системный промпт) — вместо/вместе с обычным текстом показываем
+// компактные кнопки-варианты, тап по любой сразу отправляет её как
+// обычное сообщение. Поле ввода при этом никуда не девается.
+function parseQuickOptions(text) {
+  if (typeof text !== "string") return { displayText: text, options: [] };
+  const match = text.match(/\n?\[(?:ВАРИАНТЫ|OPTIONS)\s*:\s*([^\]]+)\]\s*$/i);
+  if (!match) return { displayText: text, options: [] };
+  const options = match[1]
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+  return { displayText: text.slice(0, match.index).trimEnd(), options };
+}
+
+function sendQuickOption(text) {
+  if (!text) return;
+  sendMessage(text);
+}
+
 function addMessageToDOM(role, text, opts = {}) {
   const wrap = document.createElement("div");
   wrap.className = `msg msg-${role === "assistant" ? "bot" : "user"}${opts.proactive ? " msg-proactive" : ""}`;
@@ -1743,22 +1768,42 @@ function addMessageToDOM(role, text, opts = {}) {
   label.className = "msg-label";
   label.textContent = role === "assistant" ? "Yari" : "ты";
 
+  const { displayText, options: quickOptions } = role === "assistant" ? parseQuickOptions(text) : { displayText: text, options: [] };
+
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
   if (opts.image) {
     const img = document.createElement("img");
     img.src = opts.image;
-    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (text ? "margin-bottom:6px;" : "");
+    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (displayText ? "margin-bottom:6px;" : "");
     bubble.appendChild(img);
   }
-  if (text) {
+  if (displayText) {
     const textEl = document.createElement("div");
-    textEl.textContent = text;
+    textEl.textContent = displayText;
     bubble.appendChild(textEl);
   }
 
   wrap.appendChild(label);
   wrap.appendChild(bubble);
+
+  if (quickOptions.length) {
+    const pillsRow = document.createElement("div");
+    pillsRow.className = "option-pills";
+    quickOptions.forEach((optText) => {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = "option-pill";
+      pill.textContent = optText;
+      pill.addEventListener("click", () => {
+        pillsRow.querySelectorAll(".option-pill").forEach((b) => (b.disabled = true));
+        pillsRow.style.opacity = "0.5";
+        sendQuickOption(optText);
+      });
+      pillsRow.appendChild(pill);
+    });
+    wrap.appendChild(pillsRow);
+  }
 
   if (role === "assistant") {
     const feedbackBar = document.createElement("div");
