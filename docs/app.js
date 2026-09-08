@@ -161,32 +161,28 @@ function sunIconSvg(color) {
 }
 
 function moonIconSvg(color) {
-  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 1 0 10.5 10.5z"/></svg>`;
+  return (
+    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 1 0 10.5 10.5z"/></svg>`
+  );
 }
 
-// Тёмная тема → иконка солнышка на градиентной кнопке (как "создать код").
-// Светлая тема → иконка голубой луны на обычной прозрачной кнопке.
+// Просто текстовая ссылка, как "выйти" — без фоновой плашки. Тёмная тема:
+// тёплый (персиковый) текст + иконка солнца. Светлая тема: голубой текст +
+// иконка луны-контура. Подпись всегда называет тему, в которую переключит нажатие.
 function updateThemeToggleBtn(theme) {
   const btn = document.getElementById("themeToggleBtn");
   if (!btn) return;
   const icon = btn.querySelector(".theme-toggle-icon");
   const label = btn.querySelector(".theme-toggle-label");
   if (theme === "dark") {
-    btn.style.background = "linear-gradient(135deg, var(--peach), var(--lavender))";
-    btn.style.borderColor = "transparent";
-    if (icon) icon.innerHTML = sunIconSvg("var(--on-accent)");
-    if (label) {
-      label.textContent = tr("themeLight");
-      label.style.color = "var(--on-accent)";
-    }
+    btn.style.color = "var(--peach)";
+    if (icon) icon.innerHTML = sunIconSvg("currentColor");
+    if (label) label.textContent = tr("themeLight");
   } else {
-    btn.style.background = "transparent";
-    btn.style.borderColor = "var(--panther-line)";
-    if (icon) icon.innerHTML = moonIconSvg("var(--cyber-blue)");
-    if (label) {
-      label.textContent = tr("themeDark");
-      label.style.color = "var(--text-dim)";
-    }
+    btn.style.color = "var(--cyber-blue)";
+    if (icon) icon.innerHTML = moonIconSvg("currentColor");
+    if (label) label.textContent = tr("themeDark");
   }
 }
 
@@ -197,9 +193,9 @@ function applyTheme(theme) {
 }
 
 // Оверлей закрашивается цветом НОВОЙ темы и расширяется кругом от точки
-// нажатия (clip-path). Как только круг закрывает весь экран — тема
-// переключается мгновенно у него "под низом", а сам оверлей тут же
-// растворяется, открывая уже переключённый интерфейс.
+// нажатия (clip-path). Тема переключается по таймеру (setTimeout), а не
+// только по transitionend — на части мобильных браузеров transitionend для
+// clip-path может не сработать, и тогда переключение молча не происходило бы.
 function runThemeTransition(e) {
   const nextTheme = getTheme() === "dark" ? "light" : "dark";
   const rect = e.currentTarget.getBoundingClientRect();
@@ -218,25 +214,37 @@ function runThemeTransition(e) {
     `transition:clip-path 0.5s ease;`;
   document.body.appendChild(overlay);
 
-  requestAnimationFrame(() => {
-    overlay.style.clipPath = `circle(${maxRadius}px at ${cx}px ${cy}px)`;
-  });
-
-  overlay.addEventListener("transitionend", function onEnd() {
-    overlay.removeEventListener("transitionend", onEnd);
+  let switched = false;
+  function doSwitch() {
+    if (switched) return;
+    switched = true;
     applyTheme(nextTheme);
     overlay.style.transition = "opacity 0.25s ease";
     overlay.style.opacity = "0";
     setTimeout(() => overlay.remove(), 260);
+  }
+
+  requestAnimationFrame(() => {
+    overlay.style.clipPath = `circle(${maxRadius}px at ${cx}px ${cy}px)`;
   });
+
+  overlay.addEventListener("transitionend", doSwitch);
+  setTimeout(doSwitch, 550); // подстраховка, если transitionend не пришёл
 }
 
+// Вставляется под блоком "угловатость баблов" (слайдер радиуса) в панели
+// профиля — не в шапку.
 function buildThemeToggle() {
-  if (document.getElementById("themeToggleBtn") || !profileToggle || !profileToggle.parentNode) return;
+  if (document.getElementById("themeToggleBtn") || !radiusSlider) return;
+  const radiusSection = radiusSlider.closest(".radius-row")
+    ? radiusSlider.closest(".radius-row").parentElement
+    : null;
+  if (!radiusSection || !radiusSection.parentNode) return;
+
   const btn = document.createElement("button");
   btn.type = "button";
   btn.id = "themeToggleBtn";
-  btn.className = "theme-toggle-btn";
+  btn.className = "profile-link-cta theme-toggle-link";
 
   const icon = document.createElement("span");
   icon.className = "theme-toggle-icon";
@@ -249,7 +257,7 @@ function buildThemeToggle() {
   btn.appendChild(label);
   btn.addEventListener("click", runThemeTransition);
 
-  profileToggle.parentNode.insertBefore(btn, profileToggle);
+  radiusSection.parentNode.insertBefore(btn, radiusSection.nextSibling);
   updateThemeToggleBtn(getTheme());
 }
 
