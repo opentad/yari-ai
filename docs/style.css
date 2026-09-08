@@ -19,23 +19,36 @@
      тёмный, независимо от темы, чтобы контраст не терялся в светлой теме */
   --on-accent: #110d13;
 
+  /* интенсивность розово-лавандового свечения на фоне — вынесена в
+     переменные, чтобы в светлой теме её можно было поднять отдельно
+     (на светлом фоне то же свечение растворяется гораздо сильнее) */
+  --glow-1: rgba(243, 166, 189, 0.42);
+  --glow-2: rgba(185, 166, 232, 0.20);
+  --glow-3: rgba(185, 166, 232, 0.07);
+
   /* настраиваемые в профиле */
   --user-bubble-color: var(--peach);
   --bubble-radius: 14px;
 }
 
 /* Светлая тема: розовый акцент остаётся, тёмные поверхности становятся
-   белыми/светлыми. Переключается через data-theme="light" на <html> (см. app.js). */
+   светлыми — но не голым белым (#fff), а чуть тёплым/сероватым оттенком,
+   иначе розовое свечение фона почти не видно и лого (светлые линии)
+   сливается с фоном. Переключается через data-theme="light" на <html>
+   (см. app.js). */
 [data-theme="light"] {
-  --panther: #ffffff;
-  --panther-soft: #fdf3f6;
-  --panther-elevated: #ffffff;
-  --panther-line: #ecd7dd;
+  --panther: #f7f1ee;
+  --panther-soft: #fbeff2;
+  --panther-elevated: #fdf7f5;
+  --panther-line: #e3c9d0;
   --text: #2a1e24;
   --text-dim: #8c7681;
-  --overlay-bg: rgba(255, 255, 255, 0.82);
-  --devpanel-bg: rgba(255, 255, 255, 0.96);
+  --overlay-bg: rgba(251, 239, 242, 0.85);
+  --devpanel-bg: rgba(253, 247, 245, 0.96);
   --hover-bg: rgba(0, 0, 0, 0.045);
+  --glow-1: rgba(243, 166, 189, 0.65);
+  --glow-2: rgba(185, 166, 232, 0.34);
+  --glow-3: rgba(185, 166, 232, 0.14);
 }
 
 * { box-sizing: border-box; }
@@ -45,9 +58,9 @@ html, body {
   margin: 0;
   background: radial-gradient(
     ellipse 160% 84% at 50% 100%,
-    rgba(243, 166, 189, 0.42) 0%,
-    rgba(185, 166, 232, 0.20) 38%,
-    rgba(185, 166, 232, 0.07) 64%,
+    var(--glow-1) 0%,
+    var(--glow-2) 38%,
+    var(--glow-3) 64%,
     transparent 88%
   ), var(--panther);
   color: var(--text);
@@ -123,6 +136,13 @@ body {
 .brand-mark {
   filter: drop-shadow(0 0 4px rgba(243, 166, 189, 0.55));
   flex-shrink: 0;
+}
+
+/* Лого нарисовано светлыми линиями для тёмного фона — на светлом фоне
+   иначе становится невидимым. invert+hue-rotate переворачивает светлое/
+   тёмное, сохраняя исходный оттенок линий. */
+[data-theme="light"] .brand-mark {
+  filter: invert(1) hue-rotate(180deg) drop-shadow(0 0 4px rgba(243, 166, 189, 0.4));
 }
 
 .header-name {
@@ -429,24 +449,11 @@ body {
   height: 18px;
 }
 
-/* Кнопка переключения темы — светлая/тёмная. В тёмной теме показывает
-   солнышко на розово-лавандовом градиенте (как кнопка "создать код" в
-   dev-панели); в светлой — голубую луну на обычной прозрачной кнопке.
-   Подпись всегда называет тему, В КОТОРУЮ переключит нажатие. */
-.theme-toggle-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border-radius: 16px;
-  padding: 5px 10px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  text-transform: lowercase;
-  cursor: pointer;
-  border: 1px solid var(--panther-line);
-  background: transparent;
-  color: var(--text-dim);
-  flex-shrink: 0;
+/* Переключатель темы — текстовая ссылка того же типа, что "выйти"/"войти",
+   без фоновой плашки (стили background/border наследуются от .profile-link-cta).
+   Цвет текста и иконки задаётся в JS (тёплый в тёмной теме, голубой в светлой). */
+.theme-toggle-link {
+  align-self: flex-start;
 }
 
 .theme-toggle-icon {
