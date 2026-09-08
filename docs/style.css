@@ -260,6 +260,35 @@ body {
   opacity: 0.9;
 }
 
+/* Быстрые варианты ответа — тап сразу отправляет вариант как сообщение,
+   поле ввода при этом остаётся доступным как обычно. */
+.option-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  max-width: 82%;
+}
+
+.option-pill {
+  background: var(--panther-soft);
+  border: 1px solid var(--lavender);
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.option-pill:hover {
+  background: var(--panther-line);
+}
+
+.option-pill:disabled {
+  cursor: default;
+}
+
 .composer-wrap {
   display: flex;
   flex-direction: column;
@@ -454,6 +483,11 @@ body {
    Цвет текста и иконки задаётся в JS (тёплый в тёмной теме, голубой в светлой). */
 .theme-toggle-link {
   align-self: flex-start;
+}
+
+#themeToggleBtn,
+#profileLogoutBtn {
+  text-transform: none;
 }
 
 .theme-toggle-icon {
