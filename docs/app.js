@@ -149,7 +149,7 @@ const quotePreviewClose = document.getElementById("quotePreviewClose");
 const THEME_KEY = "yari_theme";
 const THEME_BASE_COLOR = { dark: "#110d13", light: "#ffffff" };
 const LOGO_SRC = { dark: "yari-logo-white.svg", light: "yari-logo-dark.svg" };
-const LOGO_HEIGHT = { dark: "80px", light: "88px" };
+const LOGO_HEIGHT = { dark: "80px", light: "89px" };
 
 function getTheme() {
   return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
