@@ -148,6 +148,7 @@ const quotePreviewClose = document.getElementById("quotePreviewClose");
 
 const THEME_KEY = "yari_theme";
 const THEME_BASE_COLOR = { dark: "#110d13", light: "#ffffff" };
+const LOGO_SRC = { dark: "yari-logo-white.svg", light: "yari-logo-dark.svg" };
 
 function getTheme() {
   return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
@@ -194,6 +195,16 @@ function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   localStorage.setItem(THEME_KEY, theme);
   updateThemeToggleBtn(theme);
+
+  // Лого меняется вместе с темой (белый вариант на тёмном фоне, тёмный —
+  // на светлом), иначе на светлой теме лого сливается/теряется.
+  const logoEl = document.querySelector(".brand-logo");
+  if (logoEl) logoEl.src = LOGO_SRC[theme];
+
+  // theme-color влияет на адресную строку/статус-бар при установке как PWA —
+  // должен совпадать с фоном текущей темы, а не быть всегда тёмным.
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute("content", THEME_BASE_COLOR[theme]);
 }
 
 // Оверлей закрашивается цветом НОВОЙ темы и расширяется кругом от точки
@@ -1027,7 +1038,7 @@ if (guestBannerBtn) {
 // запросом к Supabase Auth REST API (/auth/v1/verify) через анонимный ключ —
 // это публичная, безопасная операция, служебный ключ для неё не нужен.
 // Ссылка (resetForm, checkRecoveryHash) оставлена как запасной вариант —
-// если она у кого-то откроется, тоже сработает.
+// если она у кого-то всё же откроется, тоже сработает.
 
 let forgotEmail = "";
 
