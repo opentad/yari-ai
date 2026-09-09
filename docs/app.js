@@ -149,6 +149,7 @@ const quotePreviewClose = document.getElementById("quotePreviewClose");
 const THEME_KEY = "yari_theme";
 const THEME_BASE_COLOR = { dark: "#110d13", light: "#ffffff" };
 const LOGO_SRC = { dark: "yari-logo-white.svg", light: "yari-logo-dark.svg" };
+const LOGO_HEIGHT = { dark: "80px", light: "92px" };
 
 function getTheme() {
   return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
@@ -199,7 +200,10 @@ function applyTheme(theme) {
   // Лого меняется вместе с темой (белый вариант на тёмном фоне, тёмный —
   // на светлом), иначе на светлой теме лого сливается/теряется.
   const logoEl = document.querySelector(".brand-logo");
-  if (logoEl) logoEl.src = LOGO_SRC[theme];
+  if (logoEl) {
+    logoEl.src = LOGO_SRC[theme];
+    logoEl.style.height = LOGO_HEIGHT[theme];
+  }
 
   // theme-color влияет на адресную строку/статус-бар при установке как PWA —
   // должен совпадать с фоном текущей темы, а не быть всегда тёмным.
