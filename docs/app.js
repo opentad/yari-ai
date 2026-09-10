@@ -7,6 +7,9 @@ const MAX_IMAGE_DIMENSION = 1280;
 let pendingImage = null; // dataURL текущего прикреплённого фото
 let attachPreviewBarEl = null;
 let attachBtnEl = null;
+let imageToolsBtnEl = null;
+let imageModeBarEl = null;
+let imageMode = null; // null | "generate" | "edit"
 
 function resizeImageToDataUrl(file, maxDimension) {
   return new Promise((resolve, reject) => {
@@ -110,6 +113,104 @@ function buildAttachUI() {
 }
 
 buildAttachUI();
+
+// ===== Инструменты изображений: три точки → "сгенерировать" / "редактировать" =====
+// Кнопка стоит правее скрепки в том же поле ввода. Выбор режима открывает
+// плашку над полем ввода с названием режима и крестиком отмены — обычный
+// текст без плашки уходит Яри как раньше, с плашкой — уходит в генерацию
+// картинки (см. обработчик submit ниже).
+
+function buildImageToolsUI() {
+  if (!form || !input || !attachBtnEl) return;
+  const wrapper = attachBtnEl.parentNode;
+  if (!wrapper) return;
+
+  attachBtnEl.style.right = "34px";
+  input.style.paddingRight = "64px";
+
+  const menuBtn = document.createElement("button");
+  menuBtn.type = "button";
+  menuBtn.title = "изображения";
+  menuBtn.style.cssText =
+    "position:absolute;right:4px;bottom:6px;background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:5px;line-height:0;";
+  menuBtn.innerHTML =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+
+  const menu = document.createElement("div");
+  menu.style.cssText =
+    "display:none;position:absolute;bottom:40px;right:0;background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:10px;padding:4px;z-index:50;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,0.45);";
+
+  function menuItem(label, iconSvg, mode) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.style.cssText =
+      "display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;background:transparent;border:none;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;cursor:pointer;border-radius:7px;text-align:left;";
+    item.innerHTML = `<span style="display:inline-flex;line-height:0;">${iconSvg}</span><span>${label}</span>`;
+    item.addEventListener("click", () => {
+      setImageMode(mode);
+      menu.style.display = "none";
+    });
+    return item;
+  }
+
+  const genIcon =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>';
+  const editIcon =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+
+  menu.appendChild(menuItem("Сгенерировать изображение", genIcon, "generate"));
+  menu.appendChild(menuItem("Редактировать изображение", editIcon, "edit"));
+
+  menuBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+  });
+  document.addEventListener("click", () => {
+    menu.style.display = "none";
+  });
+
+  wrapper.appendChild(menuBtn);
+  wrapper.appendChild(menu);
+  imageToolsBtnEl = menuBtn;
+
+  const bar = document.createElement("div");
+  bar.style.cssText = "display:none;align-items:center;gap:10px;padding:8px 20px 0;";
+  const barText = document.createElement("div");
+  barText.style.cssText =
+    "flex:1;padding:6px 10px;border-left:2px solid var(--lavender);background:var(--panther-soft);border-radius:0 6px 6px 0;font-size:12px;color:var(--text-dim);";
+  const barClose = document.createElement("button");
+  barClose.type = "button";
+  barClose.textContent = "✕";
+  barClose.title = "отменить";
+  barClose.style.cssText =
+    "flex-shrink:0;width:22px;height:22px;border-radius:50%;border:none;background:transparent;color:var(--text-dim);cursor:pointer;font-size:13px;";
+  barClose.addEventListener("click", () => setImageMode(null));
+  bar.appendChild(barText);
+  bar.appendChild(barClose);
+  if (form.parentElement) form.parentElement.insertBefore(bar, form);
+  imageModeBarEl = bar;
+  imageModeBarEl._textEl = barText;
+}
+
+function setImageMode(mode) {
+  imageMode = mode;
+  if (!imageModeBarEl) return;
+  if (!mode) {
+    imageModeBarEl.style.display = "none";
+    return;
+  }
+  imageModeBarEl.style.display = "flex";
+  imageModeBarEl._textEl.textContent =
+    mode === "generate" ? "режим: сгенерировать изображение" : "режим: редактировать изображение (приложи фото)";
+}
+
+// Гостям инструменты изображений недоступны, как и фото.
+function updateImageToolsVisibility() {
+  if (imageToolsBtnEl) imageToolsBtnEl.style.display = isLoggedIn() ? "" : "none";
+  if (!isLoggedIn()) setImageMode(null);
+}
+
+buildImageToolsUI();
 
 const chatsToggle = document.getElementById("chatsToggle");
 const chatsPanel = document.getElementById("chatsPanel");
@@ -901,6 +1002,7 @@ function renderAuthUI() {
     if (guestBanner) guestBanner.style.display = "flex";
   }
   updateAttachVisibility();
+  updateImageToolsVisibility();
 }
 
 // Фото доступны только залогиненным (зарегистрированным и деву) — гостям
@@ -1877,6 +1979,16 @@ function addMessageToDOM(role, text, opts = {}) {
     img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (displayText ? "margin-bottom:6px;" : "");
     bubble.appendChild(img);
   }
+  if (opts.generatedImage) {
+    const imgWrap = document.createElement("div");
+    imgWrap.style.cssText = "position:relative;cursor:pointer;";
+    const genImg = document.createElement("img");
+    genImg.src = opts.generatedImage;
+    genImg.style.cssText = "max-width:100%;border-radius:10px;display:block;";
+    imgWrap.appendChild(genImg);
+    imgWrap.addEventListener("click", () => openImageLightbox(opts.generatedImage));
+    bubble.appendChild(imgWrap);
+  }
   if (displayText) {
     const textEl = document.createElement("div");
     textEl.textContent = displayText;
@@ -1971,7 +2083,136 @@ function renderMessages() {
     addMessageToDOM("assistant", tr("greeting"));
     return;
   }
-  c.messages.forEach((m) => addMessageToDOM(m.role, m.content, { proactive: m.proactive, image: m.image }));
+  c.messages.forEach((m) =>
+    addMessageToDOM(m.role, m.content, { proactive: m.proactive, image: m.image, generatedImage: m.generatedImage })
+  );
+}
+
+// Полноэкранный просмотр сгенерированной картинки + кнопка скачивания.
+// download на кросс-доменной ссылке браузер не всегда форсит (может просто
+// открыть картинку) — на мобильном Chrome тогда работает долгий тап по
+// картинке → "скачать изображение", это тоже нормальный путь.
+function openImageLightbox(url) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:20px;gap:16px;";
+
+  const img = document.createElement("img");
+  img.src = url;
+  img.style.cssText = "max-width:100%;max-height:75vh;border-radius:10px;object-fit:contain;";
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:12px;";
+
+  const downloadBtn = document.createElement("a");
+  downloadBtn.href = url;
+  downloadBtn.download = "yari-image.jpg";
+  downloadBtn.target = "_blank";
+  downloadBtn.rel = "noopener";
+  downloadBtn.textContent = "скачать";
+  downloadBtn.style.cssText =
+    "padding:10px 18px;border-radius:10px;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;text-decoration:none;cursor:pointer;";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.textContent = "закрыть";
+  closeBtn.style.cssText =
+    "padding:10px 18px;border-radius:10px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
+  closeBtn.addEventListener("click", () => overlay.remove());
+
+  btnRow.appendChild(downloadBtn);
+  btnRow.appendChild(closeBtn);
+  overlay.appendChild(img);
+  overlay.appendChild(btnRow);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+// Запуск генерации/редактирования: сразу показываем сообщение юзера и
+// "печатает", затем опрашиваем /image-status, пока Kie (через колбэк на
+// бэкенде) не положит туда готовый результат.
+const IMAGE_POLL_INTERVAL_MS = 3000;
+const IMAGE_POLL_TIMEOUT_MS = 120000;
+
+async function handleGenerateImageFlow(promptText, mode, sourceImage) {
+  const c = getActiveChat();
+
+  c.messages.push({ role: "user", content: promptText, image: mode === "edit" ? sourceImage : undefined });
+  let titleChanged = false;
+  if (c.messages.length === 1) {
+    c.title = promptText.slice(0, 30);
+    titleChanged = true;
+  }
+  if (isLoggedIn()) await persistChatToServer(c, titleChanged);
+  addMessageToDOM("user", promptText, { image: mode === "edit" ? sourceImage : undefined });
+  renderChatsPanel();
+
+  const typingEl = document.createElement("div");
+  typingEl.className = "msg msg-bot";
+  const typingLabel = document.createElement("div");
+  typingLabel.className = "msg-label";
+  typingLabel.textContent = "Yari";
+  const typingBubble = document.createElement("div");
+  typingBubble.className = "msg-bubble typing-indicator";
+  typingBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  typingEl.appendChild(typingLabel);
+  typingEl.appendChild(typingBubble);
+  chat.appendChild(typingEl);
+  chat.scrollTop = chat.scrollHeight;
+  setStatus(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/generate-image`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ prompt: promptText, mode, image: mode === "edit" ? sourceImage : undefined }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.error) {
+      typingEl.remove();
+      addMessageToDOM(
+        "assistant",
+        data.limitReached ? "на сегодня лимит картинок исчерпан (2 в день)." : data.error || "не получилось запустить генерацию."
+      );
+      return;
+    }
+
+    const taskId = data.taskId;
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < IMAGE_POLL_TIMEOUT_MS) {
+      await new Promise((r) => setTimeout(r, IMAGE_POLL_INTERVAL_MS));
+      const statusRes = await fetch(`${API_BASE}/image-status?taskId=${encodeURIComponent(taskId)}`, {
+        headers: authHeaders(),
+      });
+      const statusData = await statusRes.json().catch(() => null);
+      if (!statusData) continue;
+
+      if (statusData.state === "success" && statusData.resultUrl) {
+        typingEl.remove();
+        c.messages.push({ role: "assistant", content: "", generatedImage: statusData.resultUrl });
+        if (isLoggedIn()) await persistChatToServer(c, false);
+        addMessageToDOM("assistant", "", { generatedImage: statusData.resultUrl });
+        return;
+      }
+      if (statusData.state === "fail") {
+        typingEl.remove();
+        addMessageToDOM("assistant", "не получилось сгенерировать картинку: " + (statusData.failMsg || "неизвестная ошибка"));
+        return;
+      }
+    }
+
+    typingEl.remove();
+    addMessageToDOM("assistant", "генерация занимает необычно долго, попробуй ещё раз чуть позже.");
+  } catch (err) {
+    typingEl.remove();
+    addMessageToDOM("assistant", "у меня тут что-то с соединением, попробуй ещё раз.");
+  } finally {
+    setStatus(false);
+  }
 }
 
 function looksLikeFlairOff(text) {
@@ -2176,6 +2417,24 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text && !pendingImage) return;
+
+  if (imageMode) {
+    if (!text) return;
+    if (imageMode === "edit" && !pendingImage) {
+      addMessageToDOM("assistant", "пожалуйста, добавьте изображение");
+      return;
+    }
+    const mode = imageMode;
+    const sourceImage = pendingImage;
+    input.value = "";
+    input.style.height = "auto";
+    setImageMode(null);
+    pendingImage = null;
+    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
+    await handleGenerateImageFlow(text, mode, sourceImage);
+    return;
+  }
+
   input.value = "";
   input.style.height = "auto";
 
@@ -2423,6 +2682,7 @@ function showLanguageWelcomeIfNeeded() {
   renderProfileIdentity();
   buildThemeToggle();
   updateAttachVisibility();
+  updateImageToolsVisibility();
 
   // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
   // была объявлена в этой области видимости — это кидало ReferenceError
