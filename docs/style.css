@@ -127,8 +127,6 @@ body {
 
 .header-name-text {
   font-family: 'Fraunces', serif;
-  font-style: italic;
-  font-weight: 600;
   font-size: 23px;
   color: var(--text);
 }
@@ -147,8 +145,6 @@ body {
 
 .header-name {
   font-family: 'Fraunces', serif;
-  font-style: italic;
-  font-weight: 600;
   font-size: 26px;
   letter-spacing: 0.02em;
   color: var(--text);
@@ -524,8 +520,6 @@ body {
 
 .panel-title {
   font-family: 'Fraunces', serif;
-  font-style: italic;
-  font-weight: 600;
   font-size: 17px;
   color: var(--text);
   padding: 0 20px 14px;
