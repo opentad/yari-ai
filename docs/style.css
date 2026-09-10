@@ -520,7 +520,7 @@ body {
 
 .panel-title {
   font-family: 'Fraunces', serif;
-  font-size: 17px;
+  font-size: 20px;
   color: var(--text);
   padding: 0 20px 14px;
   flex-shrink: 0;
