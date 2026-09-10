@@ -6,6 +6,7 @@ const input = document.getElementById("input");
 const MAX_IMAGE_DIMENSION = 1280;
 let pendingImage = null; // dataURL текущего прикреплённого фото
 let attachPreviewBarEl = null;
+let attachBtnEl = null;
 
 function resizeImageToDataUrl(file, maxDimension) {
   return new Promise((resolve, reject) => {
@@ -104,6 +105,8 @@ function buildAttachUI() {
   wrapper.appendChild(attachBtn);
   wrapper.appendChild(fileInput);
   if (form.parentElement) form.parentElement.insertBefore(previewBar, form);
+
+  attachBtnEl = attachBtn;
 }
 
 buildAttachUI();
@@ -453,11 +456,24 @@ const PROFILE_KEY = "yari_profile_v1";
 const META_KEY = "yari_chat_meta_v1";
 const GUEST_LIMIT_KEY = "yari_guest_limit_v1";
 const USER_LIMIT_KEY = "yari_user_limit_v1";
+const GUEST_ID_KEY = "yari_guest_id";
 const GUEST_DAILY_LIMIT = 10;
 const USER_DAILY_LIMIT = 15;
 const MIN_GAP_DAYS = 2;
 const MAX_GAP_DAYS = 4;
 const DEFAULT_PROFILE = { color: "#4fc3f7", radius: 14 };
+
+// Стабильный идентификатор гостя (переживает перезагрузку страницы, но не
+// очистку хранилища) — по нему бэкенд считает дневной лимит ТОКЕНОВ для
+// гостей отдельно от клиентского счётчика СООБЩЕНИЙ выше.
+function getGuestId() {
+  let id = localStorage.getItem(GUEST_ID_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    localStorage.setItem(GUEST_ID_KEY, id);
+  }
+  return id;
+}
 
 function randomGapMs() {
   const days = MIN_GAP_DAYS + Math.random() * (MAX_GAP_DAYS - MIN_GAP_DAYS);
@@ -883,6 +899,18 @@ function renderAuthUI() {
       profilePanel.classList.remove("open");
     };
     if (guestBanner) guestBanner.style.display = "flex";
+  }
+  updateAttachVisibility();
+}
+
+// Фото доступны только залогиненным (зарегистрированным и деву) — гостям
+// скрепка не показывается вообще, независимо от того, сколько у гостя
+// осталось лимита сообщений/токенов.
+function updateAttachVisibility() {
+  if (attachBtnEl) attachBtnEl.style.display = isLoggedIn() ? "" : "none";
+  if (!isLoggedIn()) {
+    pendingImage = null;
+    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
   }
 }
 
@@ -1334,13 +1362,13 @@ function renderUsageGauge(container, data) {
       "height:22px;border-radius:11px;display:flex;align-items:center;justify-content:center;" +
       "font-size:11px;color:rgba(244,238,242,0.85);" +
       "background:linear-gradient(90deg, rgba(185,232,166,0.5), rgba(185,232,166,0.2), rgba(185,232,166,0.5));";
-    bar.textContent = "безлимит";
+    bar.textContent = `потрачено: ${data.tokensUsedToday} сегодня / ${data.tokensUsedTotal} всего`;
     container.appendChild(bar);
     return;
   }
 
-  const budget = data.tier === "total" ? data.totalBudget : data.dailyBudget;
-  const used = data.tier === "total" ? data.tokensUsedTotal : data.tokensUsedToday;
+  const budget = data.dailyBudget;
+  const used = data.tokensUsedToday;
   const remaining = Math.max(0, budget - used);
   const remainingPct = budget > 0 ? (remaining / budget) * 100 : 0;
   const usedPct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 100;
@@ -1450,18 +1478,23 @@ function renderCodesBlock(container) {
         row.style.cssText = "padding:6px 0;border-bottom:1px solid var(--panther-line);";
 
         const kindLabel = c.kind === "daily" ? "в день" : c.kind === "total" ? "разово" : "безлимит";
+        const usedLabel = c.redeemed_by_user_id ? " · использован" : "";
         const info = document.createElement("div");
         info.textContent =
           `${c.code} — ${kindLabel}` +
           (c.token_budget ? ` (${c.token_budget})` : "") +
           (c.label ? ` · ${c.label}` : "") +
-          (c.active ? "" : " · выкл");
+          (c.active ? "" : " · выкл") +
+          usedLabel;
         info.style.marginBottom = "4px";
+
+        const btnRow = document.createElement("div");
+        btnRow.style.cssText = "display:flex;gap:6px;";
 
         const toggleBtn = document.createElement("button");
         toggleBtn.textContent = c.active ? "выключить" : "включить";
         toggleBtn.style.cssText =
-          "font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
+          "flex:1;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
         toggleBtn.addEventListener("click", async () => {
           await fetch(`${API_BASE}/dev/toggle-code`, {
             method: "POST",
@@ -1471,8 +1504,25 @@ function renderCodesBlock(container) {
           loadCodes();
         });
 
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "удалить";
+        deleteBtn.style.cssText =
+          "flex:1;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:#e88a9a;cursor:pointer;";
+        deleteBtn.addEventListener("click", async () => {
+          if (!confirm(`Удалить код "${c.code}"? Это необратимо.`)) return;
+          await fetch(`${API_BASE}/dev/delete-code`, {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json", "x-yari-token": token }),
+            body: JSON.stringify({ code: c.code }),
+          });
+          loadCodes();
+        });
+
+        btnRow.appendChild(toggleBtn);
+        btnRow.appendChild(deleteBtn);
+
         row.appendChild(info);
-        row.appendChild(toggleBtn);
+        row.appendChild(btnRow);
         listBox.appendChild(row);
       });
     } catch (err) {
@@ -1599,6 +1649,40 @@ function renderDevSidePanels() {
   renderCodesBlock(left);
   renderStatsBlock(right);
   appendProblemsBlock(right);
+  appendDevExitBlock(right);
+}
+
+// Кнопка выхода из режима разраба — зовёт /dev/exit с текущим токеном,
+// а после успешного ответа чистит локально сохранённые роль/токен и
+// убирает боковые панели.
+function appendDevExitBlock(container) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "margin-top:16px;padding-top:12px;border-top:1px solid var(--panther-line);";
+
+  const exitBtn = document.createElement("button");
+  exitBtn.textContent = "выйти из режима разраба";
+  exitBtn.style.cssText =
+    "width:100%;padding:8px;border-radius:8px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:12px;";
+  exitBtn.addEventListener("click", async () => {
+    const token = localStorage.getItem("yari_token");
+    try {
+      await fetch(`${API_BASE}/dev/exit`, {
+        method: "POST",
+        headers: authHeaders({ "x-yari-token": token }),
+      });
+    } catch (err) {
+      // даже если запрос не прошёл — всё равно чистим локально ниже
+    }
+    localStorage.removeItem("yari_role");
+    localStorage.removeItem("yari_token");
+    const left = document.getElementById("devPanelLeft");
+    const right = document.getElementById("devPanelRight");
+    if (left) left.remove();
+    if (right) right.remove();
+  });
+
+  wrap.appendChild(exitBtn);
+  container.appendChild(wrap);
 }
 
 // Технические жалобы (дизлайк с причиной "техническая") — отдельный блок,
@@ -1933,7 +2017,7 @@ async function sendMessage(text) {
     if (isLoggedIn()) updateChatMeta(c.id, { proactiveOff: true });
   }
 
-  const imageToSend = pendingImage;
+  const imageToSend = isLoggedIn() ? pendingImage : null;
   pendingImage = null;
   if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
 
@@ -1976,7 +2060,10 @@ async function sendMessage(text) {
   try {
     const res = await fetch(`${API_BASE}/chat`, {
       method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
+      headers: authHeaders({
+        "Content-Type": "application/json",
+        ...(isLoggedIn() ? {} : { "x-yari-guest": getGuestId() }),
+      }),
       body: JSON.stringify({
         chatId: c.id,
         messages: c.messages.map((m, idx, arr) => {
@@ -2335,6 +2422,7 @@ function showLanguageWelcomeIfNeeded() {
   renderAuthUI();
   renderProfileIdentity();
   buildThemeToggle();
+  updateAttachVisibility();
 
   // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
   // была объявлена в этой области видимости — это кидало ReferenceError
