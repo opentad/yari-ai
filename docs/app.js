@@ -9,6 +9,7 @@ let attachPreviewBarEl = null;
 let attachBtnEl = null;
 let imageToolsBtnEl = null;
 let imageModeBarEl = null;
+let imageToolsRemainingEl = null; // блок "Осталось на сегодня: N" в меню инструментов
 let imageMode = null; // null | "generate" | "edit"
 
 function resizeImageToDataUrl(file, maxDimension) {
@@ -118,7 +119,22 @@ buildAttachUI();
 // Кнопка стоит правее скрепки в том же поле ввода. Выбор режима открывает
 // плашку над полем ввода с названием режима и крестиком отмены — обычный
 // текст без плашки уходит Яри как раньше, с плашкой — уходит в генерацию
-// картинки (см. обработчик submit ниже).
+// картинки (см. обработчик submit ниже). Внутри того же меню — некликабельный
+// блок "Осталось на сегодня: N", уменьшающийся с каждой генерацией.
+
+const IMAGE_GEN_LIMIT_KEY = "yari_image_gen_limit_v1";
+const IMAGE_DAILY_LIMIT = 2;
+
+function getRemainingGenerations() {
+  const usage = getDailyUsage(IMAGE_GEN_LIMIT_KEY);
+  return Math.max(0, IMAGE_DAILY_LIMIT - usage.count);
+}
+
+function updateRemainingGensDisplay() {
+  if (!imageToolsRemainingEl) return;
+  const remaining = getRemainingGenerations();
+  imageToolsRemainingEl.innerHTML = `${tr("remainingToday")}: <strong>${remaining}</strong>`;
+}
 
 function buildImageToolsUI() {
   if (!form || !input || !attachBtnEl) return;
@@ -161,9 +177,16 @@ function buildImageToolsUI() {
   menu.appendChild(menuItem("Сгенерировать изображение", genIcon, "generate"));
   menu.appendChild(menuItem("Редактировать изображение", editIcon, "edit"));
 
+  const remainingEl = document.createElement("div");
+  remainingEl.className = "remaining-gens";
+  menu.appendChild(remainingEl);
+  imageToolsRemainingEl = remainingEl;
+
   menuBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    const opening = menu.style.display === "none";
+    menu.style.display = opening ? "block" : "none";
+    if (opening) updateRemainingGensDisplay();
   });
   document.addEventListener("click", () => {
     menu.style.display = "none";
@@ -243,6 +266,22 @@ const msgActionReply = document.getElementById("msgActionReply");
 const quotePreview = document.getElementById("quotePreview");
 const quotePreviewText = document.getElementById("quotePreviewText");
 const quotePreviewClose = document.getElementById("quotePreviewClose");
+
+// --- Новые элементы: крестики закрытия панелей, галерея, реферальная ссылка ---
+const chatsCloseBtn = document.getElementById("chatsCloseBtn");
+const profileCloseBtn = document.getElementById("profileCloseBtn");
+const galleryCloseBtn = document.getElementById("galleryCloseBtn");
+const referralCloseBtn = document.getElementById("referralCloseBtn");
+const yariContactTrigger = document.getElementById("yariContactTrigger");
+const contactGalleryOverlay = document.getElementById("contactGalleryOverlay");
+const contactGalleryGrid = document.getElementById("contactGalleryGrid");
+const referralTrigger = document.getElementById("referralTrigger");
+const referralPanel = document.getElementById("referralPanel");
+const referralLinkText = document.getElementById("referralLinkText");
+const referralCopyBtn = document.getElementById("referralCopyBtn");
+const referralTermsText = document.getElementById("referralTermsText");
+const referralStatText = document.getElementById("referralStatText");
+const blurBackdrop = document.getElementById("blurBackdrop");
 
 // ===== Тема (светлая/тёмная) =====
 // Хранится в localStorage, применяется атрибутом data-theme на <html>,
@@ -392,27 +431,28 @@ applyTheme(getTheme());
 
 const I18N = {
   ru: {
-    chatsToggle: "чаты ▾",
+    chatsToggle: "Чаты ▾",
     panelTitleChats: "Чаты",
-    newChatTitle: "новый чат",
-    profileTitle: "профиль",
-    login: "войти",
+    newChatTitle: "Новый чат",
+    newChatDefaultTitle: "Новый чат",
+    profileTitle: "Профиль",
+    login: "Войти",
     guestUser: "Пользователь",
-    guestBannerText: "гостевой режим: 1 чат, до 10 сообщений в день",
-    guestBannerBtn: "войти / зарегистрироваться",
-    bubbleColorLabel: "цвет твоих баблов",
-    bubbleRadiusLabel: "угловатость баблов",
-    changeEmailLabel: "изменить email",
+    guestBannerText: "Гостевой режим: 1 чат, до 10 сообщений в день",
+    guestBannerBtn: "Войти / зарегистрироваться",
+    bubbleColorLabel: "Цвет твоих баблов",
+    bubbleRadiusLabel: "Угловатость баблов",
+    changeEmailLabel: "Изменить email",
     newEmailPlaceholder: "новый email",
     deleteAccount: "удалить аккаунт",
     logout: "Выйти",
     loginCta: "войти / создать аккаунт",
     composerPlaceholder: "напиши что-нибудь…",
     greeting: "привет. пиши, о чём хотела поговорить — я тут.",
-    statusOnline: "на связи",
-    statusTyping: "печатает",
-    tabLogin: "вход",
-    tabRegister: "регистрация",
+    statusOnline: "На связи",
+    statusTyping: "Печатает",
+    tabLogin: "Вход",
+    tabRegister: "Регистрация",
     fieldEmail: "email",
     fieldPassword: "пароль",
     loginSubmit: "войти",
@@ -424,29 +464,38 @@ const I18N = {
     quoteCancel: "отменить цитату",
     themeLight: "Светлая тема",
     themeDark: "Тёмная тема",
+    remainingToday: "Осталось на сегодня",
+    renameLabel: "Переименовать",
+    deleteLabel: "Удалить",
+    galleryTitle: "Медиа",
+    galleryEmpty: "Пока нет фото",
+    referralTitle: "Реферальная ссылка",
+    referralCopy: "копировать",
+    referralCopied: "скопировано",
   },
   en: {
-    chatsToggle: "chats ▾",
+    chatsToggle: "Chats ▾",
     panelTitleChats: "Chats",
-    newChatTitle: "new chat",
-    profileTitle: "profile",
-    login: "log in",
+    newChatTitle: "New chat",
+    newChatDefaultTitle: "New chat",
+    profileTitle: "Profile",
+    login: "Log in",
     guestUser: "User",
-    guestBannerText: "guest mode: 1 chat, up to 10 messages a day",
-    guestBannerBtn: "log in / sign up",
-    bubbleColorLabel: "your bubble color",
-    bubbleRadiusLabel: "bubble roundness",
-    changeEmailLabel: "change email",
+    guestBannerText: "Guest mode: 1 chat, up to 10 messages a day",
+    guestBannerBtn: "Log in / sign up",
+    bubbleColorLabel: "Your bubble color",
+    bubbleRadiusLabel: "Bubble roundness",
+    changeEmailLabel: "Change email",
     newEmailPlaceholder: "new email",
     deleteAccount: "delete account",
     logout: "log out",
     loginCta: "log in / sign up",
     composerPlaceholder: "type something…",
     greeting: "hi. write what's on your mind — I'm here.",
-    statusOnline: "online",
-    statusTyping: "typing",
-    tabLogin: "log in",
-    tabRegister: "sign up",
+    statusOnline: "Online",
+    statusTyping: "Typing",
+    tabLogin: "Log in",
+    tabRegister: "Sign up",
     fieldEmail: "email",
     fieldPassword: "password",
     loginSubmit: "log in",
@@ -458,6 +507,14 @@ const I18N = {
     quoteCancel: "cancel quote",
     themeLight: "light theme",
     themeDark: "dark theme",
+    remainingToday: "Left today",
+    renameLabel: "Rename",
+    deleteLabel: "Delete",
+    galleryTitle: "Media",
+    galleryEmpty: "No photos yet",
+    referralTitle: "Referral link",
+    referralCopy: "copy",
+    referralCopied: "copied",
   },
 };
 
@@ -489,9 +546,15 @@ function applyLanguage() {
   if (guestBannerTextEl) guestBannerTextEl.textContent = tr("guestBannerText");
   if (guestBannerBtn) guestBannerBtn.textContent = tr("guestBannerBtn");
 
-  const profileLabels = document.querySelectorAll(".profile-section-label");
-  if (profileLabels[0]) profileLabels[0].textContent = tr("bubbleColorLabel");
-  if (profileLabels[1]) profileLabels[1].textContent = tr("bubbleRadiusLabel");
+  // Раньше эти два label находились по позиционному индексу среди ВСЕХ
+  // .profile-section-label на странице — а перед ними в разметке уже стоял
+  // label "изменить email" с тем же классом, из-за чего индекс съезжал и
+  // сюда подставлялся не тот текст (баг: на выборе цвета баблов вылезала
+  // "угловатость баблов"). Теперь оба label ищутся напрямую по id.
+  const bubbleColorLabelEl = document.getElementById("bubbleColorLabel");
+  if (bubbleColorLabelEl) bubbleColorLabelEl.textContent = tr("bubbleColorLabel");
+  const bubbleRadiusLabelEl = document.getElementById("bubbleRadiusLabel");
+  if (bubbleRadiusLabelEl) bubbleRadiusLabelEl.textContent = tr("bubbleRadiusLabel");
 
   const changeEmailLabelEl = document.querySelector('label[for="newEmailInput"]');
   if (changeEmailLabelEl) changeEmailLabelEl.textContent = tr("changeEmailLabel");
@@ -527,6 +590,22 @@ function applyLanguage() {
   if (quotePreviewClose) quotePreviewClose.setAttribute("aria-label", tr("quoteCancel"));
   if (!isLoggedIn() && profileEmailEl) profileEmailEl.textContent = tr("guestUser");
 
+  const galleryTitleEl = document.querySelector(".contact-gallery-title");
+  if (galleryTitleEl) galleryTitleEl.textContent = tr("galleryTitle");
+
+  const referralTriggerLabel = referralTrigger ? referralTrigger.querySelector("span") : null;
+  if (referralTriggerLabel) referralTriggerLabel.textContent = tr("referralTitle");
+  const referralTitleEl = document.querySelector(".referral-title");
+  if (referralTitleEl) referralTitleEl.textContent = tr("referralTitle");
+  if (referralTermsText) {
+    referralTermsText.innerHTML =
+      currentLang() === "en"
+        ? `This is your referral link. For every person who follows it and starts chatting with Yari, you get <strong>1 image generation</strong> and <strong>400 tokens</strong>.`
+        : `Ваша реферальная ссылка. За каждого человека, который перешёл по ней и начал общение с Yari, вы получаете <strong>1 генерацию изображения</strong> и <strong>400 токенов</strong>.`;
+  }
+  if (referralCopyBtn) referralCopyBtn.textContent = tr("referralCopy");
+
+  updateRemainingGensDisplay();
   updateThemeToggleBtn(getTheme());
   setStatus(false);
 }
@@ -551,6 +630,18 @@ function authHeaders(extra = {}) {
   if (token) headers["Authorization"] = `Bearer ${token}`;
   return headers;
 }
+
+// Реферальный код из URL (?ref=код) — ловим при заходе и держим в
+// localStorage до момента регистрации, тогда отправляем на бэкенд вместе
+// с формой регистрации (см. registerForm submit). Начисление токенов и
+// генерации — на бэкенде, после того как приглашённый напишет первое
+// сообщение Яри (это отдельная часть работы, не во фронтенде).
+const REFERRAL_CODE_KEY = "yari_referral_code";
+(function captureReferralCode() {
+  const params = new URLSearchParams(location.search);
+  const ref = params.get("ref");
+  if (ref) localStorage.setItem(REFERRAL_CODE_KEY, ref);
+})();
 
 const STORAGE_KEY = "yari_chats_v1";
 const PROFILE_KEY = "yari_profile_v1";
@@ -585,7 +676,9 @@ function randomGapMs() {
 // зарегистрированный: USER_LIMIT_KEY / 15). Это client-side заглушка —
 // хранится в localStorage, так что обходится очисткой хранилища. Настоящая
 // защита требует счётчика на бэкенде (в super-responder), это отдельная
-// задача при необходимости. =====
+// задача при необходимости. То же самое верно и для IMAGE_GEN_LIMIT_KEY
+// (счётчик "осталось генераций" в composer) — реальный лимит проверяет
+// бэкенд (limitReached), это лишь отображение для пользователя. =====
 
 function getDailyUsage(key) {
   const today = new Date().toISOString().slice(0, 10);
@@ -625,7 +718,7 @@ function saveStore(store) {
 function newChat() {
   return {
     id: "chat_" + Date.now(),
-    title: "новый чат",
+    title: tr("newChatDefaultTitle"),
     messages: [],
     lastVisit: Date.now(),
     nextProactiveAt: Date.now() + randomGapMs(),
@@ -707,7 +800,7 @@ async function loadServerChats() {
     const createRes = await fetch(`${API_BASE}/chats`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ title: "новый чат", messages_json: [] }),
+      body: JSON.stringify({ title: tr("newChatDefaultTitle"), messages_json: [] }),
     });
     const createData = await createRes.json();
     chats = [normalizeServerChat(createData.chat)];
@@ -722,13 +815,24 @@ function getActiveChat() {
   return store.chats.find((c) => c.id === store.activeChatId);
 }
 
+// Отслеживаем, у какого чата сейчас открыто выпадающее меню (три точки),
+// чтобы повторный тап по тем же точкам закрывал его, а не открывал заново.
+let openChatMenuId = null;
+
+function closeChatDropdown() {
+  const existing = document.querySelector(".chat-item-dropdown");
+  if (existing) existing.remove();
+  openChatMenuId = null;
+}
+
 function renderChatsPanel() {
   // Рендерим список в #chatsList, а не в сам #chatsPanel — так статичный
-  // заголовок "чаты" (лежит в index.html рядом с #chatsList) не затирается
+  // заголовок "Чаты" (лежит в index.html рядом с #chatsList) не затирается
   // при каждой перерисовке. Если по какой-то причине #chatsList не найден
   // в разметке — откатываемся на chatsPanel, чтобы список не пропал.
   const target = chatsListEl || chatsPanel;
   target.innerHTML = "";
+  closeChatDropdown();
   store.chats
     .slice()
     .sort((a, b) => b.lastVisit - a.lastVisit)
@@ -738,26 +842,108 @@ function renderChatsPanel() {
 
       const label = document.createElement("span");
       label.textContent = c.title;
+      label.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
       label.addEventListener("click", () => {
         switchChat(c.id);
       });
-
       item.appendChild(label);
 
+      // Меню из трёх точек — заменяет прежнюю текстовую кнопку "удалить".
+      // Переименование происходит прямо в списке (подпись превращается в
+      // поле ввода) — без popup/alert, как и просила.
       if (isLoggedIn()) {
-        const del = document.createElement("span");
-        del.className = "chat-item-delete";
-        del.textContent = "удалить";
-        del.addEventListener("click", (e) => {
+        const menuBtn = document.createElement("button");
+        menuBtn.type = "button";
+        menuBtn.className = "chat-item-menu-btn";
+        menuBtn.setAttribute("aria-label", "меню чата");
+        menuBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+        menuBtn.addEventListener("click", (e) => {
           e.stopPropagation();
-          deleteChat(c.id);
+          if (openChatMenuId === c.id) {
+            closeChatDropdown();
+            return;
+          }
+          closeChatDropdown();
+          openChatMenuId = c.id;
+
+          const dropdown = document.createElement("div");
+          dropdown.className = "chat-item-dropdown";
+
+          const renameBtn = document.createElement("button");
+          renameBtn.type = "button";
+          renameBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>' +
+            `<span>${tr("renameLabel")}</span>`;
+          renameBtn.addEventListener("click", () => {
+            closeChatDropdown();
+            startRenameChat(item, label, c);
+          });
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "danger";
+          deleteBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>' +
+            `<span>${tr("deleteLabel")}</span>`;
+          deleteBtn.addEventListener("click", () => {
+            closeChatDropdown();
+            deleteChat(c.id);
+          });
+
+          dropdown.appendChild(renameBtn);
+          dropdown.appendChild(deleteBtn);
+          item.appendChild(dropdown);
         });
-        item.appendChild(del);
+        item.appendChild(menuBtn);
       }
 
       target.appendChild(item);
     });
 }
+
+// Переименование без popup — подпись чата в списке заменяется на поле
+// ввода, сохраняется по Enter или по потере фокуса, Esc отменяет.
+function startRenameChat(item, label, c) {
+  const inputEl = document.createElement("input");
+  inputEl.type = "text";
+  inputEl.value = c.title;
+  inputEl.style.cssText =
+    "flex:1;min-width:0;background:var(--panther);border:1px solid var(--lavender);border-radius:6px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;padding:4px 8px;";
+  item.replaceChild(inputEl, label);
+  inputEl.focus();
+  inputEl.select();
+
+  let committed = false;
+  async function commit() {
+    if (committed) return;
+    committed = true;
+    const newTitle = inputEl.value.trim() || c.title;
+    c.title = newTitle;
+    if (isLoggedIn()) await persistChatToServer(c, true);
+    else saveStore(store);
+    renderChatsPanel();
+  }
+
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inputEl.blur();
+    }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      committed = true; // отменяем без сохранения
+      renderChatsPanel();
+    }
+  });
+  inputEl.addEventListener("blur", commit, { once: true });
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".chat-item-dropdown") && !e.target.closest(".chat-item-menu-btn")) {
+    closeChatDropdown();
+  }
+});
 
 function switchChat(id) {
   store.activeChatId = id;
@@ -774,7 +960,7 @@ function switchChat(id) {
 }
 
 async function deleteChat(id) {
-  if (!isLoggedIn()) return; // гость не может удальнить динамичнеск чат
+  if (!isLoggedIn()) return; // гость не может удалить единственный чат
 
   await fetch(`${API_BASE}/chats/${id}`, { method: "DELETE", headers: authHeaders() });
   store.chats = store.chats.filter((c) => c.id !== id);
@@ -783,7 +969,7 @@ async function deleteChat(id) {
     const createRes = await fetch(`${API_BASE}/chats`, {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ title: "новый чат", messages_json: [] }),
+      body: JSON.stringify({ title: tr("newChatDefaultTitle"), messages_json: [] }),
     });
     const createData = await createRes.json();
     store.chats.push(normalizeServerChat(createData.chat));
@@ -800,7 +986,12 @@ chatsToggle.addEventListener("click", () => {
   chatsPanel.classList.toggle("open");
   profilePanel.classList.remove("open");
   authPanel.classList.remove("open");
+  contactGalleryOverlay.classList.remove("open");
 });
+
+if (chatsCloseBtn) {
+  chatsCloseBtn.addEventListener("click", () => chatsPanel.classList.remove("open"));
+}
 
 newChatBtn.addEventListener("click", async () => {
   if (!isLoggedIn()) {
@@ -812,7 +1003,7 @@ newChatBtn.addEventListener("click", async () => {
   const res = await fetch(`${API_BASE}/chats`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ title: "новый чат", messages_json: [] }),
+    body: JSON.stringify({ title: tr("newChatDefaultTitle"), messages_json: [] }),
   });
   const data = await res.json();
   if (data.chat) {
@@ -892,6 +1083,14 @@ if (profileToggle) {
     profilePanel.classList.toggle("open");
     chatsPanel.classList.remove("open");
     authPanel.classList.remove("open");
+    contactGalleryOverlay.classList.remove("open");
+  });
+}
+
+if (profileCloseBtn) {
+  profileCloseBtn.addEventListener("click", () => {
+    profilePanel.classList.remove("open");
+    referralPanel.classList.remove("open");
   });
 }
 
@@ -983,6 +1182,123 @@ if (profileLoginCta) {
   });
 }
 
+// ===== "Контактная" карточка Yari + галерея =====
+// Тап по блоку с логотипом/именем в шапке открывает панель под шапкой (сама
+// шапка остаётся на месте, компактной — не увеличивается) со всеми фото,
+// которыми обменялись в текущем чате. Повторный тап туда же закрывает.
+
+function collectChatImages() {
+  const c = getActiveChat();
+  if (!c) return [];
+  const images = [];
+  c.messages.forEach((m) => {
+    if (m.image) images.push(m.image);
+    if (m.generatedImage) images.push(m.generatedImage);
+  });
+  return images;
+}
+
+function renderContactGallery() {
+  if (!contactGalleryGrid) return;
+  const images = collectChatImages();
+  contactGalleryGrid.innerHTML = "";
+  if (images.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "contact-gallery-empty";
+    empty.textContent = tr("galleryEmpty");
+    contactGalleryGrid.appendChild(empty);
+    return;
+  }
+  images
+    .slice()
+    .reverse()
+    .forEach((url) => {
+      const img = document.createElement("img");
+      img.src = url;
+      img.loading = "lazy";
+      img.addEventListener("click", () => openImageLightbox(url));
+      contactGalleryGrid.appendChild(img);
+    });
+}
+
+if (yariContactTrigger) {
+  yariContactTrigger.addEventListener("click", () => {
+    const willOpen = !contactGalleryOverlay.classList.contains("open");
+    if (willOpen) renderContactGallery();
+    contactGalleryOverlay.classList.toggle("open");
+    chatsPanel.classList.remove("open");
+    profilePanel.classList.remove("open");
+    authPanel.classList.remove("open");
+  });
+}
+
+if (galleryCloseBtn) {
+  galleryCloseBtn.addEventListener("click", () => contactGalleryOverlay.classList.remove("open"));
+}
+
+// ===== Реферальная ссылка =====
+// ВНИМАНИЕ: требует пары небольших доработок на бэкенде (в super-responder):
+// эндпоинт GET /my-referral, возвращающий { code, referredCount, tokensEarned },
+// и приём referralCode в POST /register для привязки приглашения (начисление —
+// только после первого сообщения приглашённого в чате с Yari).
+
+function buildReferralLink(code) {
+  return `${location.origin}${location.pathname}?ref=${code}`;
+}
+
+async function loadReferralInfo() {
+  if (!referralLinkText) return;
+  if (!isLoggedIn()) {
+    referralLinkText.textContent = "—";
+    if (referralStatText) referralStatText.textContent = "";
+    return;
+  }
+  referralLinkText.textContent = "…";
+  if (referralStatText) referralStatText.textContent = "";
+  try {
+    const res = await fetch(`${API_BASE}/my-referral`, { headers: authHeaders() });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.error || !data.code) {
+      referralLinkText.textContent = "—";
+      return;
+    }
+    referralLinkText.textContent = buildReferralLink(data.code);
+    if (referralStatText) {
+      referralStatText.textContent =
+        currentLang() === "en"
+          ? `${data.referredCount || 0} joined · ${data.tokensEarned || 0} tokens earned`
+          : `Перешло: ${data.referredCount || 0} · получено токенов: ${data.tokensEarned || 0}`;
+    }
+  } catch (err) {
+    referralLinkText.textContent = "—";
+  }
+}
+
+if (referralTrigger) {
+  referralTrigger.addEventListener("click", () => {
+    referralPanel.classList.add("open");
+    loadReferralInfo();
+  });
+}
+
+if (referralCloseBtn) {
+  referralCloseBtn.addEventListener("click", () => referralPanel.classList.remove("open"));
+}
+
+if (referralCopyBtn) {
+  referralCopyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(referralLinkText.textContent);
+      referralCopyBtn.textContent = tr("referralCopied");
+      setTimeout(() => {
+        referralCopyBtn.textContent = tr("referralCopy");
+      }, 1500);
+    } catch (err) {
+      // буфер обмена недоступен — тихо промолчим
+    }
+  });
+}
+
 // ===== Авторизация =====
 
 function renderAuthUI() {
@@ -993,11 +1309,12 @@ function renderAuthUI() {
     if (guestBanner) guestBanner.style.display = "none";
   } else {
     authToggle.style.display = "";
-    authToggle.textContent = "войти";
+    authToggle.textContent = tr("login");
     authToggle.onclick = () => {
       authPanel.classList.toggle("open");
       chatsPanel.classList.remove("open");
       profilePanel.classList.remove("open");
+      contactGalleryOverlay.classList.remove("open");
     };
     if (guestBanner) guestBanner.style.display = "flex";
   }
@@ -1133,11 +1450,12 @@ if (registerForm) {
     showAuthError("");
     const email = document.getElementById("registerEmail").value.trim();
     const password = document.getElementById("registerPassword").value;
+    const referralCode = localStorage.getItem(REFERRAL_CODE_KEY) || undefined;
     try {
       const res = await fetch(`${API_BASE}/register`, {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, referralCode }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -1147,6 +1465,7 @@ if (registerForm) {
       localStorage.setItem(AUTH_TOKEN_KEY, data.token);
       localStorage.setItem(AUTH_EMAIL_KEY, data.email);
       if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      localStorage.removeItem(REFERRAL_CODE_KEY);
       await importGuestChatsIfAny();
       location.reload();
     } catch (err) {
@@ -1606,11 +1925,11 @@ function renderCodesBlock(container) {
           loadCodes();
         });
 
-        const deleteBtn = document.createElement("button");
-        deleteBtn.textContent = "удалить";
-        deleteBtn.style.cssText =
+        const deleteBtn2 = document.createElement("button");
+        deleteBtn2.textContent = "удалить";
+        deleteBtn2.style.cssText =
           "flex:1;font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--panther-line);background:transparent;color:#e88a9a;cursor:pointer;";
-        deleteBtn.addEventListener("click", async () => {
+        deleteBtn2.addEventListener("click", async () => {
           if (!confirm(`Удалить код "${c.code}"? Это необратимо.`)) return;
           await fetch(`${API_BASE}/dev/delete-code`, {
             method: "POST",
@@ -1621,7 +1940,7 @@ function renderCodesBlock(container) {
         });
 
         btnRow.appendChild(toggleBtn);
-        btnRow.appendChild(deleteBtn);
+        btnRow.appendChild(deleteBtn2);
 
         row.appendChild(info);
         row.appendChild(btnRow);
@@ -2088,10 +2407,13 @@ function renderMessages() {
   );
 }
 
-// Полноэкранный просмотр сгенерированной картинки + кнопка скачивания.
-// download на кросс-доменной ссылке браузер не всегда форсит (может просто
-// открыть картинку) — на мобильном Chrome тогда работает долгий тап по
-// картинке → "скачать изображение", это тоже нормальный путь.
+// Полноэкранный просмотр сгенерированной картинки. Скачать/закрыть — теперь
+// квадратные кнопки-иконки (lightbox-btn) вместо текстовых. Скачать сохраняет
+// цвет прежней текстовой кнопки (розово-лавандовый градиент), закрыть —
+// неприметная, с рамкой. download на кросс-доменной ссылке браузер не всегда
+// форсит (может просто открыть картинку) — на мобильном Chrome тогда
+// работает долгий тап по картинке → "скачать изображение", это тоже
+// нормальный путь.
 function openImageLightbox(url) {
   const overlay = document.createElement("div");
   overlay.style.cssText =
@@ -2109,15 +2431,19 @@ function openImageLightbox(url) {
   downloadBtn.download = "yari-image.jpg";
   downloadBtn.target = "_blank";
   downloadBtn.rel = "noopener";
-  downloadBtn.textContent = "скачать";
-  downloadBtn.style.cssText =
-    "padding:10px 18px;border-radius:10px;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;text-decoration:none;cursor:pointer;";
+  downloadBtn.className = "lightbox-btn lightbox-btn-download";
+  downloadBtn.setAttribute("aria-label", "скачать");
+  downloadBtn.title = "скачать";
+  downloadBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>';
 
   const closeBtn = document.createElement("button");
   closeBtn.type = "button";
-  closeBtn.textContent = "закрыть";
-  closeBtn.style.cssText =
-    "padding:10px 18px;border-radius:10px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;";
+  closeBtn.className = "lightbox-btn lightbox-btn-close";
+  closeBtn.setAttribute("aria-label", "закрыть");
+  closeBtn.title = "закрыть";
+  closeBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
   closeBtn.addEventListener("click", () => overlay.remove());
 
   btnRow.appendChild(downloadBtn);
@@ -2179,6 +2505,11 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
       );
       return;
     }
+
+    // Сервер принял задачу — считаем генерацию потраченной и обновляем
+    // счётчик "Осталось на сегодня" в меню инструментов изображений.
+    incrementDailyUsage(IMAGE_GEN_LIMIT_KEY);
+    updateRemainingGensDisplay();
 
     const taskId = data.taskId;
     const startedAt = Date.now();
@@ -2352,355 +2683,4 @@ async function sendMessage(text) {
       c.nextProactiveAt = Date.now() + randomGapMs();
 
       if (isLoggedIn()) {
-        updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
-        await persistChatToServer(c, false);
-      } else {
-        saveStore(store);
-      }
-      addMessageToDOM("assistant", data.reply);
-    } else {
-      addMessageToDOM("assistant", "…что-то пошло не так, я задумалась.");
-    }
-  } catch (err) {
-    typingEl.remove();
-    addMessageToDOM("assistant", `у меня тут что-то с соединением: ${err && err.message ? err.message : err}. попробуй ещё раз.`);
-  } finally {
-    setStatus(false);
-  }
-}
-
-async function checkProactive() {
-  const c = getActiveChat();
-  if (!c || c.proactiveOff) return;
-  if (c.messages.length === 0) return;
-  if (Date.now() < c.nextProactiveAt) return;
-
-  setStatus(true);
-
-  try {
-    const res = await fetch(`${API_BASE}/proactive`, {
-      method: "POST",
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({
-        messages: c.messages.map((m) => ({ role: m.role, content: m.content })),
-      }),
-    });
-    const data = await res.json();
-    if (!data.reply) {
-      c.nextProactiveAt = Date.now() + randomGapMs();
-      if (isLoggedIn()) updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
-      else saveStore(store);
-      return;
-    }
-
-    const parts = data.reply.split("|||").map((p) => p.trim()).filter(Boolean);
-
-    for (let i = 0; i < parts.length; i++) {
-      await new Promise((r) => setTimeout(r, i === 0 ? 0 : 1200 + Math.random() * 800));
-      c.messages.push({ role: "assistant", content: parts[i], proactive: true });
-      if (isLoggedIn()) await persistChatToServer(c, false);
-      else saveStore(store);
-      addMessageToDOM("assistant", parts[i], { proactive: true });
-    }
-
-    c.nextProactiveAt = Date.now() + randomGapMs();
-    if (isLoggedIn()) updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
-    else saveStore(store);
-  } catch (err) {
-    // тихо промолчим, попробуем в другой раз
-  } finally {
-    setStatus(false);
-  }
-}
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const text = input.value.trim();
-  if (!text && !pendingImage) return;
-
-  if (imageMode) {
-    if (!text) return;
-    if (imageMode === "edit" && !pendingImage) {
-      addMessageToDOM("assistant", "пожалуйста, добавьте изображение");
-      return;
-    }
-    const mode = imageMode;
-    const sourceImage = pendingImage;
-    input.value = "";
-    input.style.height = "auto";
-    setImageMode(null);
-    pendingImage = null;
-    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
-    await handleGenerateImageFlow(text, mode, sourceImage);
-    return;
-  }
-
-  input.value = "";
-  input.style.height = "auto";
-
-  if (text) {
-    const unlocked = await tryUnlock(text);
-    if (unlocked) return;
-
-    const redeemed = await tryRedeemCode(text);
-    if (redeemed) return;
-  }
-
-  let finalText = text;
-  if (pendingQuote) {
-    const quoted = pendingQuote
-      .split("\n")
-      .map((line) => "» " + line)
-      .join("\n");
-    finalText = `${quoted}\n\n${text}`;
-  }
-  clearQuote();
-
-  sendMessage(finalText);
-});
-
-input.addEventListener("input", () => {
-  input.style.height = "auto";
-  input.style.height = Math.min(input.scrollHeight, 120) + "px";
-});
-
-// ===== Действия над сообщением: копировать / ответить (с цитатой) =====
-// Долгий тап по баблу целиком — меню для всего текста сообщения.
-// Выделение куска текста внутри бабла — то же меню, но только для
-// выделенного фрагмента (чтобы не копировать/цитировать лишнее).
-
-let pendingQuote = null;
-// Пометка о последней реакции (лайк/дизлайк) — подмешивается в следующее
-// сообщение на бэкенде, чтобы Яри "увидела" реакцию без отдельного запроса.
-let pendingReactionNote = null;
-
-function setQuote(text) {
-  pendingQuote = text;
-  if (quotePreviewText) {
-    quotePreviewText.textContent = text.length > 140 ? text.slice(0, 140) + "…" : text;
-  }
-  if (quotePreview) quotePreview.style.display = "flex";
-  if (input) input.focus();
-}
-
-function clearQuote() {
-  pendingQuote = null;
-  if (quotePreview) quotePreview.style.display = "none";
-}
-
-if (quotePreviewClose) {
-  quotePreviewClose.addEventListener("click", clearQuote);
-}
-
-let msgActionText = "";
-
-function showMsgActionMenu(x, y, text) {
-  if (!msgActionMenu || !text) return;
-  msgActionText = text;
-  msgActionMenu.style.display = "flex";
-  const menuWidth = msgActionMenu.offsetWidth || 160;
-  const clampedX = Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8));
-  const clampedY = Math.max(8, y);
-  msgActionMenu.style.left = clampedX + "px";
-  msgActionMenu.style.top = clampedY + "px";
-}
-
-function hideMsgActionMenu() {
-  if (!msgActionMenu) return;
-  msgActionMenu.style.display = "none";
-  msgActionText = "";
-}
-
-if (msgActionCopy) {
-  msgActionCopy.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(msgActionText);
-    } catch (err) {
-      // буфер обмена недоступен — тихо промолчим
-    }
-    hideMsgActionMenu();
-  });
-}
-
-if (msgActionReply) {
-  msgActionReply.addEventListener("click", () => {
-    setQuote(msgActionText);
-    hideMsgActionMenu();
-  });
-}
-
-document.addEventListener("click", (e) => {
-  if (msgActionMenu && msgActionMenu.style.display !== "none" && !msgActionMenu.contains(e.target)) {
-    hideMsgActionMenu();
-  }
-});
-
-// Долгий тап (или долгое нажатие мышью) по баблу целиком
-let pressTimer = null;
-let pressStart = null;
-
-chat.addEventListener("pointerdown", (e) => {
-  const bubble = e.target.closest(".msg-bubble");
-  if (!bubble) return;
-  pressStart = { x: e.clientX, y: e.clientY };
-  pressTimer = setTimeout(() => {
-    pressTimer = null;
-    showMsgActionMenu(e.clientX, Math.max(e.clientY - 56, 8), bubble.textContent);
-  }, 450);
-});
-
-chat.addEventListener("pointermove", (e) => {
-  if (!pressTimer || !pressStart) return;
-  const dx = Math.abs(e.clientX - pressStart.x);
-  const dy = Math.abs(e.clientY - pressStart.y);
-  if (dx > 8 || dy > 8) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-});
-
-chat.addEventListener("pointerup", () => {
-  if (pressTimer) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-});
-
-chat.addEventListener("pointercancel", () => {
-  if (pressTimer) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-});
-
-// Выделение фрагмента текста внутри бабла — показываем то же меню,
-// но только для выделенного куска
-document.addEventListener("selectionchange", () => {
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-
-  const range = sel.getRangeAt(0);
-  const anchorNode = range.commonAncestorContainer;
-  const anchorEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
-  const bubble = anchorEl ? anchorEl.closest(".msg-bubble") : null;
-  if (!bubble) return;
-
-  const text = sel.toString().trim();
-  if (!text) return;
-
-  const rect = range.getBoundingClientRect();
-  if (!rect || (rect.width === 0 && rect.height === 0)) return;
-  showMsgActionMenu(rect.left, Math.max(rect.top - 52, 8), text);
-});
-
-// ===== Приветствие / выбор языка для новых гостей =====
-
-const LANG_CHOSEN_KEY = "yari_lang_chosen";
-
-function showLanguageWelcomeIfNeeded() {
-  if (isLoggedIn()) return;
-  if (localStorage.getItem(LANG_CHOSEN_KEY)) return;
-  const c = getActiveChat();
-  if (c && c.messages.length > 0) return; // уже не новый юзер
-
-  const overlay = document.createElement("div");
-  overlay.id = "langWelcomeOverlay";
-  overlay.style.cssText =
-    "position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
-
-  const card = document.createElement("div");
-  card.style.cssText =
-    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:var(--text);font-family:inherit;";
-
-  const title = document.createElement("div");
-  title.style.cssText =
-    "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;margin-bottom:8px;color:var(--text);";
-  title.textContent = "Yari";
-
-  const text = document.createElement("div");
-  text.style.cssText = "font-size:15px;line-height:1.5;margin-bottom:24px;color:var(--text-dim);";
-  text.innerHTML = "Welcome! Choose your language.<br>Добро пожаловать! Выберите язык.";
-
-  const btnRow = document.createElement("div");
-  btnRow.style.cssText = "display:flex;gap:12px;justify-content:center;";
-
-  function chooseLang(lang) {
-    localStorage.setItem(LANG_CHOSEN_KEY, "1");
-    localStorage.setItem("yari_lang", lang);
-    overlay.remove();
-    applyLanguage();
-    renderMessages();
-  }
-
-  const ruBtn = document.createElement("button");
-  ruBtn.textContent = "Русский";
-  ruBtn.style.cssText =
-    "flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;cursor:pointer;";
-  ruBtn.addEventListener("click", () => chooseLang("ru"));
-
-  const enBtn = document.createElement("button");
-  enBtn.textContent = "English";
-  enBtn.style.cssText =
-    "flex:1;padding:12px;border-radius:10px;border:1px solid var(--lavender);background:transparent;color:var(--text);font-weight:600;cursor:pointer;";
-  enBtn.addEventListener("click", () => chooseLang("en"));
-
-  btnRow.appendChild(ruBtn);
-  btnRow.appendChild(enBtn);
-  card.appendChild(title);
-  card.appendChild(text);
-  card.appendChild(btnRow);
-  overlay.appendChild(card);
-  document.body.appendChild(overlay);
-}
-
-// ===== Инициализация =====
-
-(async function init() {
-  checkRecoveryHash();
-
-  if (isLoggedIn()) {
-    try {
-      await loadServerChats();
-    } catch (e) {
-      const refreshed = await refreshAuthToken();
-      if (!refreshed) {
-        handleLogout();
-        return;
-      }
-      try {
-        await loadServerChats();
-      } catch (e2) {
-        handleLogout();
-        return;
-      }
-    }
-  } else {
-    loadGuestChat();
-  }
-
-  renderAuthUI();
-  renderProfileIdentity();
-  buildThemeToggle();
-  updateAttachVisibility();
-  updateImageToolsVisibility();
-
-  // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
-  // была объявлена в этой области видимости — это кидало ReferenceError
-  // и обрывало весь init() на этой строке. Из-за этого renderChatsPanel()
-  // и renderMessages() ниже вообще не вызывались после reload/логаута —
-  // именно поэтому казалось, что диалоги "слетают" при обновлении
-  // страницы (на самом деле данные были целы, просто не отрисовывались).
-  const activeChat = getActiveChat();
-  if (activeChat) {
-    activeChat.lastVisit = Date.now();
-    if (isLoggedIn()) updateChatMeta(activeChat.id, { lastVisit: activeChat.lastVisit });
-    else saveStore(store);
-  }
-
-  renderChatsPanel();
-  renderMessages();
-  checkProactive();
-  renderRolePanel();
-  applyLanguage();
-  showLanguageWelcomeIfNeeded();
-})();
+        updateChatMeta(
