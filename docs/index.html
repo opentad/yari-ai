@@ -7,20 +7,24 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#110d13">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Montserrat:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="header">
     <div class="header-inner">
       <div class="header-left">
-        <button class="chats-toggle" id="chatsToggle">чаты ▾</button>
-        <div class="header-name-group">
+        <button class="chats-toggle" id="chatsToggle">Чаты ▾</button>
+        <!-- header-name-group теперь кликабелен: тап открывает "контактную"
+             карточку Yari с галереей отправленных/полученных фото. Сам
+             блок (лого + имя + статус) при этом остаётся на месте, не
+             увеличивается — см. contactGalleryOverlay ниже. -->
+        <div class="header-name-group" id="yariContactTrigger">
           <img class="brand-logo" src="yari-logo-white.svg" alt="Yari" style="height:80px; width:auto; display:block;" />
           <div class="header-name-stack">
             <span class="header-name-text">Yari</span>
             <span class="header-status" id="status">
-              <span id="statusText">на связи</span>
+              <span id="statusText">На связи</span>
               <span class="typing-dots" id="statusDots" style="display:none;"><span></span><span></span><span></span></span>
             </span>
           </div>
@@ -34,23 +38,49 @@
             <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"></path>
           </svg>
         </button>
-        <button class="chats-toggle" id="authToggle">войти</button>
+        <button class="chats-toggle" id="authToggle">Войти</button>
       </div>
     </div>
   </header>
 
   <div class="app">
     <div class="guest-banner" id="guestBanner">
-      <span>гостевой режим: 1 чат, до 10 сообщений в день</span>
-      <button id="guestBannerBtn">войти / зарегистрироваться</button>
+      <span>Гостевой режим: 1 чат, до 10 сообщений в день</span>
+      <button id="guestBannerBtn">Войти / зарегистрироваться</button>
+    </div>
+
+    <!-- "Контактная" карточка Yari + галерея. Лежит внутри .app (как и
+         chats-panel/profile-panel), поэтому не трогает шапку — та остаётся
+         на месте. Открывается тапом по yariContactTrigger в шапке. -->
+    <div class="contact-gallery-overlay" id="contactGalleryOverlay">
+      <button type="button" class="panel-close-btn" id="galleryCloseBtn" style="right:14px;" aria-label="закрыть галерею" title="закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <div class="contact-gallery-title">Медиа</div>
+      <div class="contact-gallery-grid" id="contactGalleryGrid"></div>
     </div>
 
     <div class="chats-panel" id="chatsPanel">
+      <button type="button" class="panel-close-btn" id="chatsCloseBtn" aria-label="закрыть чаты" title="закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
       <div class="panel-title">Чаты</div>
       <div class="chats-list" id="chatsList"></div>
     </div>
 
     <div class="profile-panel" id="profilePanel">
+      <button type="button" class="panel-close-btn" id="profileCloseBtn" aria-label="закрыть профиль" title="закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
       <div class="profile-identity" id="profileIdentity">
         <button class="profile-edit-btn" id="profileEditBtn" type="button" aria-label="редактировать аккаунт" title="редактировать аккаунт">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -68,7 +98,7 @@
 
         <div class="profile-edit-menu" id="profileEditMenu">
           <div class="profile-edit-row">
-            <label class="profile-section-label" for="newEmailInput">изменить email</label>
+            <label class="profile-section-label" for="newEmailInput">Изменить email</label>
             <div class="profile-edit-inline">
               <input type="email" id="newEmailInput" placeholder="новый email" autocomplete="email" />
               <button type="button" class="profile-icon-confirm" id="saveEmailBtn" aria-label="сохранить" title="сохранить">
@@ -92,7 +122,14 @@
         </div>
       </div>
       <div>
-        <div class="profile-section-label">цвет твоих баблов</div>
+        <!-- id вместо позиционного индекса в querySelectorAll — раньше
+             applyLanguage() в app.js брал .profile-section-label по индексу
+             [0]/[1] среди ВСЕХ элементов этого класса на странице, а перед
+             этими двумя в разметке уже стоял label "изменить email" тоже с
+             классом profile-section-label. Из-за этого индекс съезжал и
+             сюда (label цвета баблов) подставлялся текст "угловатость
+             баблов". Теперь app.js будет находить оба label по id напрямую. -->
+        <div class="profile-section-label" id="bubbleColorLabel">Цвет твоих баблов</div>
         <div class="swatches" id="swatches">
           <button class="swatch" style="background:#e58fb0" data-color="#e58fb0" title="фуксия"></button>
           <button class="swatch" style="background:#8f7fe0" data-color="#8f7fe0" title="индиго"></button>
@@ -103,7 +140,7 @@
         </div>
       </div>
       <div>
-        <div class="profile-section-label">угловатость баблов</div>
+        <div class="profile-section-label" id="bubbleRadiusLabel">Угловатость баблов</div>
         <div class="radius-row">
           <input type="range" id="radiusSlider" min="0" max="26" value="14" />
           <div class="radius-preview" id="radiusPreview"></div>
@@ -125,12 +162,46 @@
         </svg>
         <span class="label-text">войти / создать аккаунт</span>
       </button>
+
+      <!-- Реферальные ссылки: тонкая полоска-разделитель внизу профиля,
+           тап раскрывает referralPanel поверх этой панели. -->
+      <button type="button" class="referral-trigger" id="referralTrigger">
+        <span>Реферальная ссылка</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Панель реферальной ссылки: раскрывается поверх профиля, тот же
+         принцип слайда, что у чатов/профиля/галереи. -->
+    <div class="referral-panel" id="referralPanel">
+      <button type="button" class="panel-close-btn" id="referralCloseBtn" aria-label="закрыть" title="закрыть">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      <svg class="referral-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+      </svg>
+      <div class="referral-title">Реферальная ссылка</div>
+      <div class="referral-link-box">
+        <span id="referralLinkText">загрузка…</span>
+        <button type="button" id="referralCopyBtn">копировать</button>
+      </div>
+      <div class="referral-terms" id="referralTermsText">
+        Ваша реферальная ссылка. За каждого человека, который перешёл по ней и начал общение с Yari, вы получаете <strong>1 генерацию изображения</strong> и <strong>400 токенов</strong>.
+      </div>
+      <div class="referral-stat" id="referralStatText"></div>
     </div>
 
     <div class="auth-panel" id="authPanel">
       <div class="auth-tabs">
-        <button class="auth-tab active" id="tabLogin" type="button">вход</button>
-        <button class="auth-tab" id="tabRegister" type="button">регистрация</button>
+        <button class="auth-tab active" id="tabLogin" type="button">Вход</button>
+        <button class="auth-tab" id="tabRegister" type="button">Регистрация</button>
       </div>
       <form class="auth-form" id="loginForm">
         <input type="email" id="loginEmail" placeholder="email" required autocomplete="email" />
@@ -170,6 +241,11 @@
       <button type="button" id="msgActionCopy">копировать</button>
       <button type="button" id="msgActionReply">ответить</button>
     </div>
+
+    <!-- Оверлей размытия для долгого (3с) удержания сообщения. Создан
+         статично, а не через JS createElement — включается/выключается
+         классом .active. -->
+    <div class="blur-backdrop" id="blurBackdrop"></div>
 
     <div class="composer-wrap">
       <div class="quote-preview" id="quotePreview" style="display:none;">
