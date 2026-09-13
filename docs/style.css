@@ -26,6 +26,10 @@
   --glow-2: rgba(185, 166, 232, 0.20);
   --glow-3: rgba(185, 166, 232, 0.07);
 
+  /* тонкий разделитель для необычных блоков (реферальная ссылка) —
+     чуть светлее фона в тёмной теме, чуть темнее в светлой */
+  --divider-subtle: rgba(255, 255, 255, 0.10);
+
   /* настраиваемые в профиле */
   --user-bubble-color: var(--peach);
   --bubble-radius: 14px;
@@ -49,6 +53,7 @@
   --glow-1: rgba(243, 166, 189, 0.65);
   --glow-2: rgba(185, 166, 232, 0.34);
   --glow-3: rgba(185, 166, 232, 0.14);
+  --divider-subtle: rgba(0, 0, 0, 0.08);
 }
 
 * { box-sizing: border-box; }
@@ -116,6 +121,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer; /* тап открывает "контактный" блок Yari с галереей фото */
 }
 
 .header-name-stack {
@@ -150,14 +156,18 @@ body {
   color: var(--text);
 }
 
+/* Шрифт статуса ("на связи"/"печатает") — та же семья, что у "Чаты",
+   "Угловатость баблов" и прочих интерфейсных надписей. text-transform
+   больше не приводит текст к нижнему регистру — регистр теперь задаётся
+   самим текстом (с большой буквы). */
 .header-status {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 500;
   font-size: 11px;
   color: var(--cyber-blue);
-  text-transform: lowercase;
 }
 
 .header-status .typing-dots span {
@@ -227,6 +237,7 @@ body {
   line-height: 1.5;
   white-space: pre-wrap;
   padding: 10px 14px;
+  transition: transform 0.25s ease;
 }
 
 .msg-bot .msg-bubble {
@@ -254,6 +265,33 @@ body {
   transform: rotate(-3deg);
   margin: 0 2px;
   opacity: 0.9;
+}
+
+/* --- Долгое удержание сообщения (3с): фон размывается, бабл слегка
+   увеличивается. Отдельно от .msg-action-menu (появляется раньше, по
+   короткому долгому тапу ~450мс) — держим значок ответить/копировать,
+   а блюр добавляем поверх при удержании дольше. --- */
+.blur-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 380;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.blur-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.msg-bubble-highlighted {
+  position: relative;
+  z-index: 390;
+  transform: scale(1.06);
 }
 
 /* Быстрые варианты ответа — тап сразу отправляет вариант как сообщение,
@@ -331,6 +369,22 @@ body {
 
 .quote-preview-close:hover {
   color: var(--peach);
+}
+
+/* Блок "Осталось на сегодня: N" в меню инструментов изображений (три
+   точки в composer). Некликабельный, просто информационная строка. */
+.remaining-gens {
+  padding: 8px 10px 4px;
+  margin-top: 2px;
+  border-top: 1px solid var(--panther-line);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.remaining-gens strong {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .composer {
@@ -428,12 +482,12 @@ body {
   background: transparent;
   border: 1px solid var(--panther-line);
   color: var(--text-dim);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
   font-size: 11px;
   padding: 5px 10px;
   border-radius: 6px;
   cursor: pointer;
-  text-transform: lowercase;
 }
 
 .new-chat-btn {
@@ -491,15 +545,45 @@ body {
   line-height: 0;
 }
 
+/* --- Крестики закрытия панелей (чаты/профиль/галерея/реферальная ссылка) —
+   неприметные, но заметные при взгляде: низкая непрозрачность в покое,
+   яркеют при наведении/тапе. Расположение (лево/право) задаётся отдельно
+   для каждой панели ниже. --- */
+.panel-close-btn {
+  position: absolute;
+  top: 14px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  opacity: 0.4;
+  cursor: pointer;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  z-index: 2;
+  padding: 0;
+}
+
+.panel-close-btn:hover,
+.panel-close-btn:active {
+  opacity: 1;
+  color: var(--peach);
+}
+
+.panel-close-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* --- Панели чатов / профиля: выезжающие оверлеи ---
-   position: absolute (не fixed!), чтобы позиционироваться относительно
-   .app (max-width: 640px, position: relative), а не относительно всего
-   экрана — иначе на широких экранах панель растягивается на весь viewport
-   и наезжает на контент чата. z-index выше хедера (200), чтобы при
-   открытии панель полностью перекрывала хедер, а не пряталась под ним.
-   padding-top уменьшен до 20px: раньше шапка была частью .app и панель
-   должна была "перепрыгивать" через её высоту (~76px), теперь шапка
-   вынесена наружу и .app начинается сразу под ней. */
+   В портретной ориентации панели становятся position:fixed на весь экран,
+   чтобы визуально заезжать поверх шапки (блока Yari) — раньше начинались
+   только под шапкой. В остальных случаях (планшет-сайдбар, широкий десктоп
+   ниже) — прежнее поведение внутри .app. */
 .chats-panel, .profile-panel {
   position: absolute;
   top: 0;
@@ -516,6 +600,13 @@ body {
   padding-top: 20px;
   transition: transform 0.25s ease;
   visibility: hidden;
+}
+
+@media (orientation: portrait) {
+  .chats-panel, .profile-panel {
+    position: fixed;
+    padding-top: max(20px, env(safe-area-inset-top));
+  }
 }
 
 .panel-title {
@@ -535,12 +626,20 @@ body {
   transform: translateX(-100%);
 }
 
+.chats-panel .panel-close-btn {
+  right: 14px; /* верхний правый угол, как просила */
+}
+
 .profile-panel {
   transform: translateX(100%);
   padding-left: 20px;
   padding-right: 20px;
   padding-bottom: 20px;
   gap: 16px;
+}
+
+.profile-panel .panel-close-btn {
+  left: 14px; /* верхний левый угол */
 }
 
 .chats-panel.open, .profile-panel.open {
@@ -605,6 +704,7 @@ body {
 }
 
 .chat-item {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -623,11 +723,73 @@ body {
   color: var(--peach);
 }
 
-.chat-item-delete {
-  color: var(--peach);
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  padding: 2px 8px;
+/* --- Меню из трёх точек на пункте чата: заменяет прежнюю текстовую
+   кнопку "удалить" — открывает "Переименовать" / "Удалить". --- */
+.chat-item-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.chat-item-menu-btn:hover {
+  color: var(--lavender);
+  background: var(--hover-bg);
+}
+
+.chat-item-menu-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-item-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 14px;
+  z-index: 260;
+  background: var(--panther-soft);
+  border: 1px solid var(--panther-line);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 160px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-item-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-item-dropdown button:hover {
+  background: var(--hover-bg);
+}
+
+.chat-item-dropdown button.danger {
+  color: var(--danger);
+}
+
+.chat-item-dropdown svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 /* --- Профиль: аватар + почта (messenger-style), пока без загрузки фото --- */
@@ -828,10 +990,10 @@ body {
 }
 
 .profile-section-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px;
-  text-transform: lowercase;
-  letter-spacing: 0.05em;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.02em;
   color: var(--text-dim);
   margin-bottom: 8px;
 }
@@ -873,6 +1035,213 @@ body {
   background: var(--user-bubble-color);
   border-radius: var(--bubble-radius) 4px var(--bubble-radius) var(--bubble-radius);
   flex-shrink: 0;
+}
+
+/* --- Реферальная ссылка: тонкий разделённый пункт в самом низу профиля,
+   тап открывает отдельную панель поверх профиля (тот же механизм слайда,
+   что у чатов/профиля). --- */
+.referral-trigger {
+  width: 100%;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid var(--divider-subtle);
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  color: var(--text-dim);
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.referral-trigger:hover {
+  color: var(--text);
+}
+
+.referral-trigger svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--lavender);
+}
+
+.referral-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 320; /* поверх панели профиля */
+  background: var(--overlay-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 24px 30px;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  visibility: hidden;
+  text-align: center;
+  overflow-y: auto;
+}
+
+.referral-panel.open {
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.referral-panel .panel-close-btn {
+  left: 14px;
+}
+
+.referral-link-icon {
+  width: 60px;
+  height: 60px;
+  margin-bottom: 18px;
+  color: var(--lavender);
+  animation: referral-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes referral-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .referral-link-icon { animation: none; }
+}
+
+.referral-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+.referral-link-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panther-soft);
+  border: 1px solid var(--panther-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.referral-link-box span {
+  flex: 1;
+  min-width: 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.referral-link-box button {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--peach), var(--lavender));
+  border: none;
+  color: var(--on-accent);
+  border-radius: 7px;
+  padding: 7px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Montserrat', sans-serif;
+}
+
+.referral-terms {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-dim);
+  max-width: 320px;
+}
+
+.referral-terms strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.referral-stat {
+  margin-top: 20px;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+
+/* --- "Контактная" карточка Yari + галерея: тап по блоку с именем Yari
+   в шапке раскрывает панель под шапкой (сама шапка/лого остаются на
+   месте, не увеличиваются) со списком всех отправленных/полученных
+   изображений в текущем чате. --- */
+.contact-gallery-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 220; /* ниже панелей чатов/профиля (250), выше чата */
+  background: var(--panther);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease;
+  visibility: hidden;
+  overflow-y: auto;
+}
+
+.contact-gallery-overlay.open {
+  transform: translateY(0);
+  visibility: visible;
+}
+
+.contact-gallery-title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 20px 20px 12px;
+  flex-shrink: 0;
+}
+
+.contact-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 0 2px 2px;
+}
+
+.contact-gallery-grid img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  cursor: pointer;
+  display: block;
+}
+
+.contact-gallery-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  padding: 40px 20px;
 }
 
 .proactive-gap {
@@ -940,12 +1309,12 @@ body {
   background: transparent;
   border: 1px solid var(--panther-line);
   color: var(--text-dim);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
   font-size: 11px;
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  text-transform: lowercase;
 }
 
 .auth-tab.active {
@@ -988,7 +1357,7 @@ body {
 }
 
 .auth-error {
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
   font-size: 11px;
   color: var(--peach);
   min-height: 14px;
@@ -1004,23 +1373,58 @@ body {
   background: var(--panther-soft);
   border-bottom: 1px solid var(--panther-line);
   border-radius: 0 0 14px 14px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
   font-size: 11px;
   color: var(--text-dim);
-  text-transform: lowercase;
 }
 
 .guest-banner button {
   background: transparent;
   border: 1px solid var(--peach);
   color: var(--peach);
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 600;
   font-size: 11px;
   padding: 5px 10px;
   border-radius: 6px;
   cursor: pointer;
-  text-transform: lowercase;
   white-space: nowrap;
+}
+
+/* --- Лайтбокс изображения: квадратные иконки-кнопки вместо текстовых
+   "скачать"/"закрыть". Скачать — тот же градиент/цвет, что и раньше у
+   текста; закрыть — неприметный крестик. --- */
+.lightbox-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lightbox-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lightbox-btn-download {
+  background: linear-gradient(135deg, var(--peach), var(--lavender));
+  color: var(--on-accent);
+}
+
+.lightbox-btn-close {
+  background: transparent;
+  border: 1px solid var(--panther-line);
+  color: var(--text-dim);
+}
+
+.lightbox-btn-close:hover {
+  color: var(--peach);
+  border-color: var(--peach);
 }
 
 button:focus-visible,
