@@ -2683,4 +2683,391 @@ async function sendMessage(text) {
       c.nextProactiveAt = Date.now() + randomGapMs();
 
       if (isLoggedIn()) {
-        updateChatMeta(
+        updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
+        await persistChatToServer(c, false);
+      } else {
+        saveStore(store);
+      }
+      addMessageToDOM("assistant", data.reply);
+    } else {
+      addMessageToDOM("assistant", "…что-то пошло не так, я задумалась.");
+    }
+  } catch (err) {
+    typingEl.remove();
+    addMessageToDOM("assistant", `у меня тут что-то с соединением: ${err && err.message ? err.message : err}. попробуй ещё раз.`);
+  } finally {
+    setStatus(false);
+  }
+}
+
+async function checkProactive() {
+  const c = getActiveChat();
+  if (!c || c.proactiveOff) return;
+  if (c.messages.length === 0) return;
+  if (Date.now() < c.nextProactiveAt) return;
+
+  setStatus(true);
+
+  try {
+    const res = await fetch(`${API_BASE}/proactive`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        messages: c.messages.map((m) => ({ role: m.role, content: m.content })),
+      }),
+    });
+    const data = await res.json();
+    if (!data.reply) {
+      c.nextProactiveAt = Date.now() + randomGapMs();
+      if (isLoggedIn()) updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
+      else saveStore(store);
+      return;
+    }
+
+    const parts = data.reply.split("|||").map((p) => p.trim()).filter(Boolean);
+
+    for (let i = 0; i < parts.length; i++) {
+      await new Promise((r) => setTimeout(r, i === 0 ? 0 : 1200 + Math.random() * 800));
+      c.messages.push({ role: "assistant", content: parts[i], proactive: true });
+      if (isLoggedIn()) await persistChatToServer(c, false);
+      else saveStore(store);
+      addMessageToDOM("assistant", parts[i], { proactive: true });
+    }
+
+    c.nextProactiveAt = Date.now() + randomGapMs();
+    if (isLoggedIn()) updateChatMeta(c.id, { nextProactiveAt: c.nextProactiveAt });
+    else saveStore(store);
+  } catch (err) {
+    // тихо промолчим, попробуем в другой раз
+  } finally {
+    setStatus(false);
+  }
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text && !pendingImage) return;
+
+  if (imageMode) {
+    if (!text) return;
+    if (imageMode === "edit" && !pendingImage) {
+      addMessageToDOM("assistant", "пожалуйста, добавьте изображение");
+      return;
+    }
+    const mode = imageMode;
+    const sourceImage = pendingImage;
+    input.value = "";
+    input.style.height = "auto";
+    setImageMode(null);
+    pendingImage = null;
+    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
+    await handleGenerateImageFlow(text, mode, sourceImage);
+    return;
+  }
+
+  input.value = "";
+  input.style.height = "auto";
+
+  if (text) {
+    const unlocked = await tryUnlock(text);
+    if (unlocked) return;
+
+    const redeemed = await tryRedeemCode(text);
+    if (redeemed) return;
+  }
+
+  let finalText = text;
+  if (pendingQuote) {
+    const quoted = pendingQuote
+      .split("\n")
+      .map((line) => "» " + line)
+      .join("\n");
+    finalText = `${quoted}\n\n${text}`;
+  }
+  clearQuote();
+
+  sendMessage(finalText);
+});
+
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 120) + "px";
+});
+
+// ===== Действия над сообщением: копировать / ответить (с цитатой) =====
+// Долгий тап по баблу целиком — меню для всего текста сообщения (через
+// 450мс). Если продолжить удерживать до 3с — фон размывается (blurBackdrop)
+// и сам бабл слегка увеличивается (msg-bubble-highlighted), см. ниже.
+// Выделение куска текста внутри бабла — то же меню, но только для
+// выделенного фрагмента (чтобы не копировать/цитировать лишнее).
+
+let pendingQuote = null;
+// Пометка о последней реакции (лайк/дизлайк) — подмешивается в следующее
+// сообщение на бэкенде, чтобы Яри "увидела" реакцию без отдельного запроса.
+let pendingReactionNote = null;
+
+function setQuote(text) {
+  pendingQuote = text;
+  if (quotePreviewText) {
+    quotePreviewText.textContent = text.length > 140 ? text.slice(0, 140) + "…" : text;
+  }
+  if (quotePreview) quotePreview.style.display = "flex";
+  if (input) input.focus();
+}
+
+function clearQuote() {
+  pendingQuote = null;
+  if (quotePreview) quotePreview.style.display = "none";
+}
+
+if (quotePreviewClose) {
+  quotePreviewClose.addEventListener("click", clearQuote);
+}
+
+let msgActionText = "";
+
+function showMsgActionMenu(x, y, text) {
+  if (!msgActionMenu || !text) return;
+  msgActionText = text;
+  msgActionMenu.style.display = "flex";
+  const menuWidth = msgActionMenu.offsetWidth || 160;
+  const clampedX = Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8));
+  const clampedY = Math.max(8, y);
+  msgActionMenu.style.left = clampedX + "px";
+  msgActionMenu.style.top = clampedY + "px";
+}
+
+function hideMsgActionMenu() {
+  if (!msgActionMenu) return;
+  msgActionMenu.style.display = "none";
+  msgActionText = "";
+}
+
+if (msgActionCopy) {
+  msgActionCopy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(msgActionText);
+    } catch (err) {
+      // буфер обмена недоступен — тихо промолчим
+    }
+    hideMsgActionMenu();
+  });
+}
+
+if (msgActionReply) {
+  msgActionReply.addEventListener("click", () => {
+    setQuote(msgActionText);
+    hideMsgActionMenu();
+  });
+}
+
+document.addEventListener("click", (e) => {
+  if (msgActionMenu && msgActionMenu.style.display !== "none" && !msgActionMenu.contains(e.target)) {
+    hideMsgActionMenu();
+  }
+});
+
+// Долгий тап (или долгое нажатие мышью) по баблу целиком. pressTimer — то же
+// меню копировать/ответить, что и раньше (450мс). longHoldTimer — доп. эффект
+// при удержании до 3с суммарно: размытие фона + лёгкое увеличение бабла.
+let pressTimer = null;
+let longHoldTimer = null;
+let pressStart = null;
+let longHoldBubbleEl = null;
+
+function clearLongHold() {
+  if (longHoldTimer) {
+    clearTimeout(longHoldTimer);
+    longHoldTimer = null;
+  }
+  if (blurBackdrop) blurBackdrop.classList.remove("active");
+  if (longHoldBubbleEl) {
+    longHoldBubbleEl.classList.remove("msg-bubble-highlighted");
+    longHoldBubbleEl = null;
+  }
+}
+
+chat.addEventListener("pointerdown", (e) => {
+  const bubble = e.target.closest(".msg-bubble");
+  if (!bubble) return;
+  pressStart = { x: e.clientX, y: e.clientY };
+  pressTimer = setTimeout(() => {
+    pressTimer = null;
+    showMsgActionMenu(e.clientX, Math.max(e.clientY - 56, 8), bubble.textContent);
+  }, 450);
+  longHoldTimer = setTimeout(() => {
+    longHoldTimer = null;
+    longHoldBubbleEl = bubble;
+    bubble.classList.add("msg-bubble-highlighted");
+    if (blurBackdrop) blurBackdrop.classList.add("active");
+  }, 3000);
+});
+
+chat.addEventListener("pointermove", (e) => {
+  if (!pressStart) return;
+  const dx = Math.abs(e.clientX - pressStart.x);
+  const dy = Math.abs(e.clientY - pressStart.y);
+  if (dx > 8 || dy > 8) {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+    clearLongHold();
+  }
+});
+
+chat.addEventListener("pointerup", () => {
+  if (pressTimer) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+  clearLongHold();
+});
+
+chat.addEventListener("pointercancel", () => {
+  if (pressTimer) {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+  clearLongHold();
+});
+
+if (blurBackdrop) {
+  blurBackdrop.addEventListener("click", () => {
+    clearLongHold();
+    hideMsgActionMenu();
+  });
+}
+
+// Выделение фрагмента текста внутри бабла — показываем то же меню,
+// но только для выделенного куска
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+
+  const range = sel.getRangeAt(0);
+  const anchorNode = range.commonAncestorContainer;
+  const anchorEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
+  const bubble = anchorEl ? anchorEl.closest(".msg-bubble") : null;
+  if (!bubble) return;
+
+  const text = sel.toString().trim();
+  if (!text) return;
+
+  const rect = range.getBoundingClientRect();
+  if (!rect || (rect.width === 0 && rect.height === 0)) return;
+  showMsgActionMenu(rect.left, Math.max(rect.top - 52, 8), text);
+});
+
+// ===== Приветствие / выбор языка для новых гостей =====
+
+const LANG_CHOSEN_KEY = "yari_lang_chosen";
+
+function showLanguageWelcomeIfNeeded() {
+  if (isLoggedIn()) return;
+  if (localStorage.getItem(LANG_CHOSEN_KEY)) return;
+  const c = getActiveChat();
+  if (c && c.messages.length > 0) return; // уже не новый юзер
+
+  const overlay = document.createElement("div");
+  overlay.id = "langWelcomeOverlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:var(--text);font-family:inherit;";
+
+  const title = document.createElement("div");
+  title.style.cssText =
+    "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;margin-bottom:8px;color:var(--text);";
+  title.textContent = "Yari";
+
+  const text = document.createElement("div");
+  text.style.cssText = "font-size:15px;line-height:1.5;margin-bottom:24px;color:var(--text-dim);";
+  text.innerHTML = "Welcome! Choose your language.<br>Добро пожаловать! Выберите язык.";
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;gap:12px;justify-content:center;";
+
+  function chooseLang(lang) {
+    localStorage.setItem(LANG_CHOSEN_KEY, "1");
+    localStorage.setItem("yari_lang", lang);
+    overlay.remove();
+    applyLanguage();
+    renderMessages();
+  }
+
+  const ruBtn = document.createElement("button");
+  ruBtn.textContent = "Русский";
+  ruBtn.style.cssText =
+    "flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--peach),var(--lavender));color:var(--on-accent);font-weight:600;cursor:pointer;";
+  ruBtn.addEventListener("click", () => chooseLang("ru"));
+
+  const enBtn = document.createElement("button");
+  enBtn.textContent = "English";
+  enBtn.style.cssText =
+    "flex:1;padding:12px;border-radius:10px;border:1px solid var(--lavender);background:transparent;color:var(--text);font-weight:600;cursor:pointer;";
+  enBtn.addEventListener("click", () => chooseLang("en"));
+
+  btnRow.appendChild(ruBtn);
+  btnRow.appendChild(enBtn);
+  card.appendChild(title);
+  card.appendChild(text);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+}
+
+// ===== Инициализация =====
+
+(async function init() {
+  checkRecoveryHash();
+
+  if (isLoggedIn()) {
+    try {
+      await loadServerChats();
+    } catch (e) {
+      const refreshed = await refreshAuthToken();
+      if (!refreshed) {
+        handleLogout();
+        return;
+      }
+      try {
+        await loadServerChats();
+      } catch (e2) {
+        handleLogout();
+        return;
+      }
+    }
+  } else {
+    loadGuestChat();
+  }
+
+  renderAuthUI();
+  renderProfileIdentity();
+  buildThemeToggle();
+  updateAttachVisibility();
+  updateImageToolsVisibility();
+
+  // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
+  // была объявлена в этой области видимости — это кидало ReferenceError
+  // и обрывало весь init() на этой строке. Из-за этого renderChatsPanel()
+  // и renderMessages() ниже вообще не вызывались после reload/логаута —
+  // именно поэтому казалось, что диалоги "слетают" при обновлении
+  // страницы (на самом деле данные были целы, просто не отрисовывались).
+  const activeChat = getActiveChat();
+  if (activeChat) {
+    activeChat.lastVisit = Date.now();
+    if (isLoggedIn()) updateChatMeta(activeChat.id, { lastVisit: activeChat.lastVisit });
+    else saveStore(store);
+  }
+
+  renderChatsPanel();
+  renderMessages();
+  checkProactive();
+  renderRolePanel();
+  applyLanguage();
+  showLanguageWelcomeIfNeeded();
+})();
