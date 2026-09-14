@@ -2286,7 +2286,23 @@ function addMessageToDOM(role, text, opts = {}) {
 
   const label = document.createElement("div");
   label.className = "msg-label";
-  label.textContent = role === "assistant" ? "Yari" : "ты";
+  if (role === "assistant" && opts.usedSearch) {
+    // Маленькая иконка планеты рядом с именем — показывает, что этот
+    // конкретный ответ был подготовлен с использованием веб-поиска.
+    label.style.cssText = "display:flex;align-items:center;gap:4px;";
+    const globeIcon = document.createElement("span");
+    globeIcon.title = "использован поиск в интернете";
+    globeIcon.style.cssText = "display:inline-flex;line-height:0;color:var(--text-dim);";
+    globeIcon.innerHTML =
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9z"/></svg>';
+    const labelText = document.createElement("span");
+    labelText.textContent = "Yari";
+    label.appendChild(globeIcon);
+    label.appendChild(labelText);
+  } else {
+    label.textContent = role === "assistant" ? "Yari" : "ты";
+  }
 
   const { displayText, options: quickOptions } = role === "assistant" ? parseQuickOptions(text) : { displayText: text, options: [] };
 
@@ -2403,7 +2419,12 @@ function renderMessages() {
     return;
   }
   c.messages.forEach((m) =>
-    addMessageToDOM(m.role, m.content, { proactive: m.proactive, image: m.image, generatedImage: m.generatedImage })
+    addMessageToDOM(m.role, m.content, {
+      proactive: m.proactive,
+      image: m.image,
+      generatedImage: m.generatedImage,
+      usedSearch: m.usedSearch,
+    })
   );
 }
 
@@ -2568,6 +2589,17 @@ function looksLikeProactiveOff(text) {
   );
 }
 
+// Эвристика "нужен ли поиск" — ТОЧНАЯ копия needsSearch из бэкенда
+// (super-responder). Здесь она используется только для того, чтобы
+// показать индикатор "ищет в интернете" ДО получения ответа — реальное
+// решение искать или нет всегда принимает бэкенд, независимо от этого.
+// Если меняешь регулярку тут — поменяй и в бэкенде, иначе индикатор будет
+// иногда врать (показываться или не показываться не в те моменты).
+function needsSearchHeuristic(text) {
+  const t = (text || "").toLowerCase();
+  return /(сегодня|сейчас|последн\w*|актуальн\w*|новост\w*|курс\s+(доллара|валют|рубля)|погод\w*|кто\s+(сейчас|такой|такая)|что\s+случилось|произошло|в\s+этом\s+году|202[4-9]|вышел\s+ли|когда\s+выйдет|расписание|цена\s+на)/.test(t);
+}
+
 async function sendMessage(text) {
   const c = getActiveChat();
 
@@ -2619,8 +2651,23 @@ async function sendMessage(text) {
 
   const typingBubble = document.createElement("div");
   typingBubble.className = "msg-bubble typing-indicator";
-  typingBubble.innerHTML =
-    '<span class="typing-dots"><span></span><span></span><span></span></span>';
+
+  // Если сообщение похоже на запрос свежих данных — показываем иконку
+  // планеты + "ищет в интернете" вместо обычных точек. Это только
+  // клиентская подсказка (см. needsSearchHeuristic выше); фактическое
+  // решение искать или нет принимает бэкенд самостоятельно.
+  if (needsSearchHeuristic(text)) {
+    typingBubble.style.cssText = "display:flex;align-items:center;gap:6px;";
+    typingBubble.innerHTML =
+      '<span style="display:inline-flex;line-height:0;" class="search-indicator-icon">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9z"/></svg></span>' +
+      '<span>ищет в интернете</span>' +
+      '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  } else {
+    typingBubble.innerHTML =
+      '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  }
 
   typingEl.appendChild(typingLabel);
   typingEl.appendChild(typingBubble);
@@ -2679,7 +2726,7 @@ async function sendMessage(text) {
     refreshMyUsage();
 
     if (data.reply) {
-      c.messages.push({ role: "assistant", content: data.reply });
+      c.messages.push({ role: "assistant", content: data.reply, usedSearch: data.usedSearch || false });
       c.nextProactiveAt = Date.now() + randomGapMs();
 
       if (isLoggedIn()) {
@@ -2688,7 +2735,7 @@ async function sendMessage(text) {
       } else {
         saveStore(store);
       }
-      addMessageToDOM("assistant", data.reply);
+      addMessageToDOM("assistant", data.reply, { usedSearch: data.usedSearch });
     } else {
       addMessageToDOM("assistant", "…что-то пошло не так, я задумалась.");
     }
