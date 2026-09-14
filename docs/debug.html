@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Debug</title>
+</head>
+<body style="font-family: monospace; padding: 16px; white-space: pre-wrap; word-break: break-all; font-size: 14px;">
+  <div id="out">Проверяю подключение...</div>
+  <script>
+    var out = document.getElementById('out');
+    var url = "https://prvwpqesbbmtzezxqcsl.supabase.co/functions/v1/super-responder/chat";
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "тест" }] })
+    })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          out.textContent = "HTTP статус: " + res.status + "\n\nОтвет сервера:\n" + text;
+        });
+      })
+      .catch(function (err) {
+        out.textContent = "ОШИБКА FETCH (запрос не ушёл): " + err.name + ": " + err.message;
+      });
+  </script>
+</body>
+</html>
