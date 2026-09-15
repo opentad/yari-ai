@@ -243,7 +243,6 @@ const profileToggle = document.getElementById("profileToggle");
 const profilePanel = document.getElementById("profilePanel");
 const swatchesEl = document.getElementById("swatches");
 const radiusSlider = document.getElementById("radiusSlider");
-const authToggle = document.getElementById("authToggle");
 const authPanel = document.getElementById("authPanel");
 const tabLogin = document.getElementById("tabLogin");
 const tabRegister = document.getElementById("tabRegister");
@@ -284,11 +283,6 @@ const referralStatText = document.getElementById("referralStatText");
 const blurBackdrop = document.getElementById("blurBackdrop");
 
 // ===== Тема (светлая/тёмная) =====
-// Хранится в localStorage, применяется атрибутом data-theme на <html>,
-// от которого зависят все цветовые CSS-переменные (см. :root /
-// [data-theme="light"] в style.css). Переключение сопровождается
-// анимацией расширяющегося круга от точки нажатия на кнопку.
-
 const THEME_KEY = "yari_theme";
 const THEME_BASE_COLOR = { dark: "#110d13", light: "#ffffff" };
 const LOGO_SRC = { dark: "yari-logo-white.svg", light: "yari-logo-dark.svg" };
@@ -312,9 +306,6 @@ function moonIconSvg(color) {
   );
 }
 
-// Просто текстовая ссылка, как "выйти" — без фоновой плашки. Тёмная тема:
-// тёплый (персиковый) текст + иконка солнца. Светлая тема: голубой текст +
-// иконка луны-контура. Подпись всегда называет тему, в которую переключит нажатие.
 function updateThemeToggleBtn(theme) {
   const btn = document.getElementById("themeToggleBtn");
   if (!btn) return;
@@ -340,24 +331,16 @@ function applyTheme(theme) {
   localStorage.setItem(THEME_KEY, theme);
   updateThemeToggleBtn(theme);
 
-  // Лого меняется вместе с темой (белый вариант на тёмном фоне, тёмный —
-  // на светлом), иначе на светлой теме лого сливается/теряется.
   const logoEl = document.querySelector(".brand-logo");
   if (logoEl) {
     logoEl.src = LOGO_SRC[theme];
     logoEl.style.height = LOGO_HEIGHT[theme];
   }
 
-  // theme-color влияет на адресную строку/статус-бар при установке как PWA —
-  // должен совпадать с фоном текущей темы, а не быть всегда тёмным.
   const themeColorMeta = document.querySelector('meta[name="theme-color"]');
   if (themeColorMeta) themeColorMeta.setAttribute("content", THEME_BASE_COLOR[theme]);
 }
 
-// Оверлей закрашивается цветом НОВОЙ темы и расширяется кругом от точки
-// нажатия (clip-path). Тема переключается по таймеру (setTimeout), а не
-// только по transitionend — на части мобильных браузеров transitionend для
-// clip-path может не сработать, и тогда переключение молча не происходило бы.
 function runThemeTransition(e) {
   const nextTheme = getTheme() === "dark" ? "light" : "dark";
   const rect = e.currentTarget.getBoundingClientRect();
@@ -391,11 +374,9 @@ function runThemeTransition(e) {
   });
 
   overlay.addEventListener("transitionend", doSwitch);
-  setTimeout(doSwitch, 550); // подстраховка, если transitionend не пришёл
+  setTimeout(doSwitch, 550);
 }
 
-// Вставляется под блоком "угловатость баблов" (слайдер радиуса) в панели
-// профиля — не в шапку.
 function buildThemeToggle() {
   if (document.getElementById("themeToggleBtn") || !radiusSlider) return;
   const radiusSection = radiusSlider.closest(".radius-row")
@@ -423,15 +404,13 @@ function buildThemeToggle() {
   updateThemeToggleBtn(getTheme());
 }
 
-// Применяем тему сразу при загрузке скрипта (до первой отрисовки),
-// чтобы не было "вспышки" неправильной темы.
 applyTheme(getTheme());
 
 // ===== Локализация (ru / en) =====
 
 const I18N = {
   ru: {
-    chatsToggle: "Чаты ▾",
+    chatsToggle: "Чаты",
     panelTitleChats: "Чаты",
     newChatTitle: "Новый чат",
     newChatDefaultTitle: "Новый чат",
@@ -474,7 +453,7 @@ const I18N = {
     referralCopied: "скопировано",
   },
   en: {
-    chatsToggle: "Chats ▾",
+    chatsToggle: "Chats",
     panelTitleChats: "Chats",
     newChatTitle: "New chat",
     newChatDefaultTitle: "New chat",
@@ -527,30 +506,27 @@ function tr(key) {
   return (I18N[lang] && I18N[lang][key]) || I18N.ru[key] || key;
 }
 
-// ===== Статус в шапке: "на связи" / "печатает" (с анимированными точками) =====
-
 function setStatus(isTyping) {
   if (statusTextEl) statusTextEl.textContent = isTyping ? tr("statusTyping") : tr("statusOnline");
   if (statusDotsEl) statusDotsEl.style.display = isTyping ? "inline-flex" : "none";
 }
 
 function applyLanguage() {
-  if (chatsToggle) chatsToggle.textContent = tr("chatsToggle");
+  // Кнопка "Чаты" теперь иконка (речевой бабл) без текста — подпись
+  // остаётся только в title/aria-label для доступности.
+  if (chatsToggle) {
+    chatsToggle.title = tr("chatsToggle");
+    chatsToggle.setAttribute("aria-label", tr("chatsToggle"));
+  }
   const panelTitleEl = document.querySelector(".panel-title");
   if (panelTitleEl) panelTitleEl.textContent = tr("panelTitleChats");
   if (newChatBtn) newChatBtn.title = tr("newChatTitle");
   if (profileToggle) profileToggle.title = tr("profileTitle");
-  if (!isLoggedIn() && authToggle) authToggle.textContent = tr("login");
 
   const guestBannerTextEl = guestBanner ? guestBanner.querySelector("span") : null;
   if (guestBannerTextEl) guestBannerTextEl.textContent = tr("guestBannerText");
   if (guestBannerBtn) guestBannerBtn.textContent = tr("guestBannerBtn");
 
-  // Раньше эти два label находились по позиционному индексу среди ВСЕХ
-  // .profile-section-label на странице — а перед ними в разметке уже стоял
-  // label "изменить email" с тем же классом, из-за чего индекс съезжал и
-  // сюда подставлялся не тот текст (баг: на выборе цвета баблов вылезала
-  // "угловатость баблов"). Теперь оба label ищутся напрямую по id.
   const bubbleColorLabelEl = document.getElementById("bubbleColorLabel");
   if (bubbleColorLabelEl) bubbleColorLabelEl.textContent = tr("bubbleColorLabel");
   const bubbleRadiusLabelEl = document.getElementById("bubbleRadiusLabel");
@@ -631,11 +607,6 @@ function authHeaders(extra = {}) {
   return headers;
 }
 
-// Реферальный код из URL (?ref=код) — ловим при заходе и держим в
-// localStorage до момента регистрации, тогда отправляем на бэкенд вместе
-// с формой регистрации (см. registerForm submit). Начисление токенов и
-// генерации — на бэкенде, после того как приглашённый напишет первое
-// сообщение Яри (это отдельная часть работы, не во фронтенде).
 const REFERRAL_CODE_KEY = "yari_referral_code";
 (function captureReferralCode() {
   const params = new URLSearchParams(location.search);
@@ -655,9 +626,6 @@ const MIN_GAP_DAYS = 2;
 const MAX_GAP_DAYS = 4;
 const DEFAULT_PROFILE = { color: "#4fc3f7", radius: 14 };
 
-// Стабильный идентификатор гостя (переживает перезагрузку страницы, но не
-// очистку хранилища) — по нему бэкенд считает дневной лимит ТОКЕНОВ для
-// гостей отдельно от клиентского счётчика СООБЩЕНИЙ выше.
 function getGuestId() {
   let id = localStorage.getItem(GUEST_ID_KEY);
   if (!id) {
@@ -671,14 +639,6 @@ function randomGapMs() {
   const days = MIN_GAP_DAYS + Math.random() * (MAX_GAP_DAYS - MIN_GAP_DAYS);
   return days * 24 * 60 * 60 * 1000;
 }
-
-// ===== Дневной лимит сообщений (гость: GUEST_LIMIT_KEY / 10,
-// зарегистрированный: USER_LIMIT_KEY / 15). Это client-side заглушка —
-// хранится в localStorage, так что обходится очисткой хранилища. Настоящая
-// защита требует счётчика на бэкенде (в super-responder), это отдельная
-// задача при необходимости. То же самое верно и для IMAGE_GEN_LIMIT_KEY
-// (счётчик "осталось генераций" в composer) — реальный лимит проверяет
-// бэкенд (limitReached), это лишь отображение для пользователя. =====
 
 function getDailyUsage(key) {
   const today = new Date().toISOString().slice(0, 10);
@@ -698,8 +658,6 @@ function incrementDailyUsage(key) {
   localStorage.setItem(key, JSON.stringify(data));
   return data.count;
 }
-
-// ===== Локальное хранилище чатов (гостевой режим) =====
 
 function loadStore() {
   try {
@@ -738,8 +696,6 @@ function loadGuestChat() {
     store.activeChatId = store.chats[0].id;
   }
 }
-
-// ===== Метаданные чатов для авторизованных юзеров (lastVisit/proactive — только локально) =====
 
 function loadMeta() {
   try {
@@ -815,8 +771,6 @@ function getActiveChat() {
   return store.chats.find((c) => c.id === store.activeChatId);
 }
 
-// Отслеживаем, у какого чата сейчас открыто выпадающее меню (три точки),
-// чтобы повторный тап по тем же точкам закрывал его, а не открывал заново.
 let openChatMenuId = null;
 
 function closeChatDropdown() {
@@ -826,10 +780,6 @@ function closeChatDropdown() {
 }
 
 function renderChatsPanel() {
-  // Рендерим список в #chatsList, а не в сам #chatsPanel — так статичный
-  // заголовок "Чаты" (лежит в index.html рядом с #chatsList) не затирается
-  // при каждой перерисовке. Если по какой-то причине #chatsList не найден
-  // в разметке — откатываемся на chatsPanel, чтобы список не пропал.
   const target = chatsListEl || chatsPanel;
   target.innerHTML = "";
   closeChatDropdown();
@@ -848,9 +798,6 @@ function renderChatsPanel() {
       });
       item.appendChild(label);
 
-      // Меню из трёх точек — заменяет прежнюю текстовую кнопку "удалить".
-      // Переименование происходит прямо в списке (подпись превращается в
-      // поле ввода) — без popup/alert, как и просила.
       if (isLoggedIn()) {
         const menuBtn = document.createElement("button");
         menuBtn.type = "button";
@@ -902,8 +849,6 @@ function renderChatsPanel() {
     });
 }
 
-// Переименование без popup — подпись чата в списке заменяется на поле
-// ввода, сохраняется по Enter или по потере фокуса, Esc отменяет.
 function startRenameChat(item, label, c) {
   const inputEl = document.createElement("input");
   inputEl.type = "text";
@@ -932,7 +877,7 @@ function startRenameChat(item, label, c) {
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      committed = true; // отменяем без сохранения
+      committed = true;
       renderChatsPanel();
     }
   });
@@ -960,7 +905,7 @@ function switchChat(id) {
 }
 
 async function deleteChat(id) {
-  if (!isLoggedIn()) return; // гость не может удалить единственный чат
+  if (!isLoggedIn()) return;
 
   await fetch(`${API_BASE}/chats/${id}`, { method: "DELETE", headers: authHeaders() });
   store.chats = store.chats.filter((c) => c.id !== id);
@@ -1058,10 +1003,6 @@ const profileLoginCta = document.getElementById("profileLoginCta");
 function renderProfileIdentity() {
   if (!profileIdentityEl) return;
 
-  // Identity-блок (аватар + подпись) теперь виден и гостю: залогиненному
-  // показываем email, гостю — метку "пользователь". Карандашик (смена
-  // email / удаление аккаунта) имеет смысл только для аккаунта, поэтому
-  // доступен исключительно залогиненным.
   profileIdentityEl.style.display = "flex";
   if (isLoggedIn()) {
     if (profileEmailEl) profileEmailEl.textContent = localStorage.getItem(AUTH_EMAIL_KEY) || "";
@@ -1183,9 +1124,6 @@ if (profileLoginCta) {
 }
 
 // ===== "Контактная" карточка Yari + галерея =====
-// Тап по блоку с логотипом/именем в шапке открывает панель под шапкой (сама
-// шапка остаётся на месте, компактной — не увеличивается) со всеми фото,
-// которыми обменялись в текущем чате. Повторный тап туда же закрывает.
 
 function collectChatImages() {
   const c = getActiveChat();
@@ -1302,29 +1240,14 @@ if (referralCopyBtn) {
 // ===== Авторизация =====
 
 function renderAuthUI() {
-  if (isLoggedIn()) {
-    // Кнопка "выйти" убрана из шапки — теперь выход только через самый
-    // низ панели профиля (profileLogoutBtn), см. renderProfileIdentity().
-    authToggle.style.display = "none";
-    if (guestBanner) guestBanner.style.display = "none";
-  } else {
-    authToggle.style.display = "";
-    authToggle.textContent = tr("login");
-    authToggle.onclick = () => {
-      authPanel.classList.toggle("open");
-      chatsPanel.classList.remove("open");
-      profilePanel.classList.remove("open");
-      contactGalleryOverlay.classList.remove("open");
-    };
-    if (guestBanner) guestBanner.style.display = "flex";
-  }
+  // Кнопка "войти" в шапке убрана целиком — вход/регистрация доступны
+  // только через гостевой баннер (guestBannerBtn) и через CTA
+  // "войти / создать аккаунт" внизу панели профиля (profileLoginCta).
+  if (guestBanner) guestBanner.style.display = isLoggedIn() ? "none" : "flex";
   updateAttachVisibility();
   updateImageToolsVisibility();
 }
 
-// Фото доступны только залогиненным (зарегистрированным и деву) — гостям
-// скрепка не показывается вообще, независимо от того, сколько у гостя
-// осталось лимита сообщений/токенов.
 function updateAttachVisibility() {
   if (attachBtnEl) attachBtnEl.style.display = isLoggedIn() ? "" : "none";
   if (!isLoggedIn()) {
@@ -1340,10 +1263,6 @@ function handleLogout() {
   location.reload();
 }
 
-// Access-токен Supabase живёт около часа. Вместо разлогина при его
-// истечении — пробуем обновить сессию через refresh-токен напрямую
-// через Supabase Auth REST API (публичная операция, анонимного ключа
-// достаточно). Если и это не сработало — тогда уже разлогиниваем.
 async function refreshAuthToken() {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
   if (!refreshToken) return false;
@@ -1388,9 +1307,6 @@ function showAuthError(msg) {
   if (authError) authError.textContent = msg || "";
 }
 
-// Скрывает все под-формы блока входа/регистрации/восстановления —
-// используется при переключении между вкладками и шагами, чтобы не
-// показывались сразу два несвязанных шага.
 function hideAllAuthSubforms() {
   if (loginForm) loginForm.style.display = "none";
   if (registerForm) registerForm.style.display = "none";
@@ -1483,15 +1399,6 @@ if (guestBannerBtn) {
 }
 
 // ===== Забыл пароль / сброс пароля =====
-// Юзер вводит email → бэкенд просит Supabase отправить письмо, в котором
-// теперь есть 6-значный код ({{ .Token }} в шаблоне письма, см. Dashboard →
-// Authentication → Emails → Reset password). Юзер вводит код + новый пароль
-// прямо в приложении (codeForm) — это не требует перехода по ссылке на
-// supabase.co, который может быть недоступен из РФ. Код проверяется прямым
-// запросом к Supabase Auth REST API (/auth/v1/verify) через анонимный ключ —
-// это публичная, безопасная операция, служебный ключ для неё не нужен.
-// Ссылка (resetForm, checkRecoveryHash) оставлена как запасной вариант —
-// если она у кого-то всё же откроется, тоже сработает.
 
 let forgotEmail = "";
 
@@ -1579,9 +1486,6 @@ if (codeForm) {
   });
 }
 
-// После перехода по ссылке из письма Supabase добавляет в адрес
-// #access_token=...&type=recovery&... — ловим это при загрузке страницы.
-// Запасной путь на случай, если ссылка у кого-то всё же откроется.
 function checkRecoveryHash() {
   if (location.hash.includes("type=recovery")) {
     const params = new URLSearchParams(location.hash.slice(1));
@@ -1634,8 +1538,6 @@ if (resetForm) {
 
 // ===== Разблокировка роли разработчика =====
 
-// Общий fetch с таймаутом — если сеть подвиснет без ответа, не ждём вечно,
-// а через FETCH_TIMEOUT_MS считаем, что это не код, и идём дальше.
 const FETCH_TIMEOUT_MS = 4000;
 
 async function fetchWithTimeout(url, options) {
@@ -1668,8 +1570,6 @@ async function tryUnlock(text) {
   }
 }
 
-// Активация кода доступа (даёт повышенный/безлимитный лимит токенов).
-// Требует аккаунт — лимит привязан к user_id.
 async function tryRedeemCode(text) {
   if (!isLoggedIn()) return false;
   try {
@@ -1689,10 +1589,6 @@ async function tryRedeemCode(text) {
     return false;
   }
 }
-
-// ===== Панель разработчика: два постоянных блока по бокам экрана =====
-// Видны сразу после активации dev-кода, без кнопок и попапов.
-// Слева — коды доступа, справа — статистика/модель/очередь правок.
 
 function renderRolePanel() {
   const role = localStorage.getItem("yari_role");
@@ -1723,9 +1619,6 @@ function ensureDevPanelContainers() {
   return { left, right };
 }
 
-// Строка "потрачено N / M токенов" под email в профиле — постоянный блок,
-// всегда занимает своё место (loading → данные, либо явная ошибка вместо
-// того, чтобы молча остаться пустым местом).
 const ASSUMED_TOKENS_PER_MESSAGE = 100;
 
 function ensureUsageBlock() {
@@ -1795,11 +1688,11 @@ function renderUsageGauge(container, data) {
   const usedPct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 100;
   const estLeft = Math.max(0, Math.round(remaining / ASSUMED_TOKENS_PER_MESSAGE));
 
-  let colorRgb = "185,232,166"; // зелёный — всё в порядке
+  let colorRgb = "185,232,166";
   if (remainingPct < 7) {
-    colorRgb = "232,138,154"; // красный — меньше 7% лимита осталось
+    colorRgb = "232,138,154";
   } else if (remainingPct < 15) {
-    colorRgb = "232,214,138"; // жёлтый — меньше 15% лимита осталось
+    colorRgb = "232,214,138";
   }
 
   const track = document.createElement("div");
@@ -1832,8 +1725,6 @@ function devLabel(text) {
   el.textContent = text;
   return el;
 }
-
-// ----- Левый блок: коды доступа -----
 
 function renderCodesBlock(container) {
   container.innerHTML = "";
@@ -1985,8 +1876,6 @@ function renderCodesBlock(container) {
   loadCodes();
 }
 
-// ----- Правый блок: статистика по токенам + модель + очередь правок -----
-
 function renderStatsBlock(container) {
   container.innerHTML = "";
   const token = localStorage.getItem("yari_token");
@@ -2073,9 +1962,6 @@ function renderDevSidePanels() {
   appendDevExitBlock(right);
 }
 
-// Кнопка выхода из режима разраба — зовёт /dev/exit с текущим токеном,
-// а после успешного ответа чистит локально сохранённые роль/токен и
-// убирает боковые панели.
 function appendDevExitBlock(container) {
   const wrap = document.createElement("div");
   wrap.style.cssText = "margin-top:16px;padding-top:12px;border-top:1px solid var(--panther-line);";
@@ -2106,8 +1992,6 @@ function appendDevExitBlock(container) {
   container.appendChild(wrap);
 }
 
-// Технические жалобы (дизлайк с причиной "техническая") — отдельный блок,
-// а не мелкая кнопка, чтобы дев видел их сразу.
 function appendProblemsBlock(container) {
   const token = localStorage.getItem("yari_token");
 
@@ -2168,7 +2052,6 @@ function appendProblemsBlock(container) {
   loadProblems();
 }
 
-// Фидбек по ответу Яри — открыт всем пользователям, не только dev.
 async function sendFeedback(originalReply, reaction, category, correction) {
   try {
     await fetch(`${API_BASE}/feedback`, {
@@ -2181,7 +2064,6 @@ async function sendFeedback(originalReply, reaction, category, correction) {
   }
 }
 
-// Компактное окошко выбора причины дизлайка — техническая или по стилю/сути ответа.
 function openDislikeReasonPopup(onSubmit) {
   const existing = document.getElementById("dislikeReasonOverlay");
   if (existing) existing.remove();
@@ -2259,10 +2141,6 @@ function openDislikeReasonPopup(onSubmit) {
   document.body.appendChild(overlay);
 }
 
-// Иногда Яри может закончить ответ строкой [ВАРИАНТЫ: вариант 1 | вариант 2]
-// (см. системный промпт) — вместо/вместе с обычным текстом показываем
-// компактные кнопки-варианты, тап по любой сразу отправляет её как
-// обычное сообщение. Поле ввода при этом никуда не девается.
 function parseQuickOptions(text) {
   if (typeof text !== "string") return { displayText: text, options: [] };
   const match = text.match(/\n?\[(?:ВАРИАНТЫ|OPTIONS)\s*:\s*([^\]]+)\]\s*$/i);
@@ -2287,8 +2165,6 @@ function addMessageToDOM(role, text, opts = {}) {
   const label = document.createElement("div");
   label.className = "msg-label";
   if (role === "assistant" && opts.usedSearch) {
-    // Маленькая иконка планеты рядом с именем — показывает, что этот
-    // конкретный ответ был подготовлен с использованием веб-поиска.
     label.style.cssText = "display:flex;align-items:center;gap:4px;";
     const globeIcon = document.createElement("span");
     globeIcon.title = "использован поиск в интернете";
@@ -2326,7 +2202,20 @@ function addMessageToDOM(role, text, opts = {}) {
   }
   if (displayText) {
     const textEl = document.createElement("div");
-    textEl.textContent = displayText;
+    if (role === "assistant" && window.marked) {
+      // Ответы Яри могут содержать маркдаун (заголовки, жирный текст,
+      // списки) — рендерим его в HTML вместо того, чтобы показывать
+      // "##"/"**" как есть. DOMPurify чистит результат перед вставкой.
+      textEl.className = "msg-markdown";
+      const rawHtml = marked.parse(displayText, { breaks: true });
+      textEl.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+    } else {
+      // Обычный (не маркдаун) текст — сообщения пользователя и т.п.
+      // Перенос строк сохраняется через white-space:pre-wrap в CSS
+      // (класс msg-plain-text).
+      textEl.className = "msg-plain-text";
+      textEl.textContent = displayText;
+    }
     bubble.appendChild(textEl);
   }
 
@@ -2428,13 +2317,6 @@ function renderMessages() {
   );
 }
 
-// Полноэкранный просмотр сгенерированной картинки. Скачать/закрыть — теперь
-// квадратные кнопки-иконки (lightbox-btn) вместо текстовых. Скачать сохраняет
-// цвет прежней текстовой кнопки (розово-лавандовый градиент), закрыть —
-// неприметная, с рамкой. download на кросс-доменной ссылке браузер не всегда
-// форсит (может просто открыть картинку) — на мобильном Chrome тогда
-// работает долгий тап по картинке → "скачать изображение", это тоже
-// нормальный путь.
 function openImageLightbox(url) {
   const overlay = document.createElement("div");
   overlay.style.cssText =
@@ -2477,9 +2359,6 @@ function openImageLightbox(url) {
   document.body.appendChild(overlay);
 }
 
-// Запуск генерации/редактирования: сразу показываем сообщение юзера и
-// "печатает", затем опрашиваем /image-status, пока Kie (через колбэк на
-// бэкенде) не положит туда готовый результат.
 const IMAGE_POLL_INTERVAL_MS = 3000;
 const IMAGE_POLL_TIMEOUT_MS = 120000;
 
@@ -2527,8 +2406,6 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
       return;
     }
 
-    // Сервер принял задачу — считаем генерацию потраченной и обновляем
-    // счётчик "Осталось на сегодня" в меню инструментов изображений.
     incrementDailyUsage(IMAGE_GEN_LIMIT_KEY);
     updateRemainingGensDisplay();
 
@@ -2589,12 +2466,6 @@ function looksLikeProactiveOff(text) {
   );
 }
 
-// Эвристика "нужен ли поиск" — ТОЧНАЯ копия needsSearch из бэкенда
-// (super-responder). Здесь она используется только для того, чтобы
-// показать индикатор "ищет в интернете" ДО получения ответа — реальное
-// решение искать или нет всегда принимает бэкенд, независимо от этого.
-// Если меняешь регулярку тут — поменяй и в бэкенде, иначе индикатор будет
-// иногда врать (показываться или не показываться не в те моменты).
 function needsSearchHeuristic(text) {
   const t = (text || "").toLowerCase();
   return /(сегодня|сейчас|последн\w*|актуальн\w*|новост\w*|курс\s+(доллара|валют|рубля)|погод\w*|кто\s+(сейчас|такой|такая)|что\s+случилось|произошло|в\s+этом\s+году|202[4-9]|вышел\s+ли|когда\s+выйдет|расписание|цена\s+на)/.test(t);
@@ -2652,17 +2523,13 @@ async function sendMessage(text) {
   const typingBubble = document.createElement("div");
   typingBubble.className = "msg-bubble typing-indicator";
 
-  // Если сообщение похоже на запрос свежих данных — показываем иконку
-  // планеты + "ищет в интернете" вместо обычных точек. Это только
-  // клиентская подсказка (см. needsSearchHeuristic выше); фактическое
-  // решение искать или нет принимает бэкенд самостоятельно.
   if (needsSearchHeuristic(text)) {
     typingBubble.style.cssText = "display:flex;align-items:center;gap:6px;";
     typingBubble.innerHTML =
       '<span style="display:inline-flex;line-height:0;" class="search-indicator-icon">' +
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
       '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9z"/></svg></span>' +
-      '<span>ищет в интернете</span>' +
+      '<span class="search-indicator-text">Ищет в интернете</span>' +
       '<span class="typing-dots"><span></span><span></span><span></span></span>';
   } else {
     typingBubble.innerHTML =
@@ -2842,16 +2709,7 @@ input.addEventListener("input", () => {
   input.style.height = Math.min(input.scrollHeight, 120) + "px";
 });
 
-// ===== Действия над сообщением: копировать / ответить (с цитатой) =====
-// Долгий тап по баблу целиком — меню для всего текста сообщения (через
-// 450мс). Если продолжить удерживать до 3с — фон размывается (blurBackdrop)
-// и сам бабл слегка увеличивается (msg-bubble-highlighted), см. ниже.
-// Выделение куска текста внутри бабла — то же меню, но только для
-// выделенного фрагмента (чтобы не копировать/цитировать лишнее).
-
 let pendingQuote = null;
-// Пометка о последней реакции (лайк/дизлайк) — подмешивается в следующее
-// сообщение на бэкенде, чтобы Яри "увидела" реакцию без отдельного запроса.
 let pendingReactionNote = null;
 
 function setQuote(text) {
@@ -2915,9 +2773,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Долгий тап (или долгое нажатие мышью) по баблу целиком. pressTimer — то же
-// меню копировать/ответить, что и раньше (450мс). longHoldTimer — доп. эффект
-// при удержании до 3с суммарно: размытие фона + лёгкое увеличение бабла.
 let pressTimer = null;
 let longHoldTimer = null;
 let pressStart = null;
@@ -2987,8 +2842,6 @@ if (blurBackdrop) {
   });
 }
 
-// Выделение фрагмента текста внутри бабла — показываем то же меню,
-// но только для выделенного куска
 document.addEventListener("selectionchange", () => {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
@@ -3007,15 +2860,13 @@ document.addEventListener("selectionchange", () => {
   showMsgActionMenu(rect.left, Math.max(rect.top - 52, 8), text);
 });
 
-// ===== Приветствие / выбор языка для новых гостей =====
-
 const LANG_CHOSEN_KEY = "yari_lang_chosen";
 
 function showLanguageWelcomeIfNeeded() {
   if (isLoggedIn()) return;
   if (localStorage.getItem(LANG_CHOSEN_KEY)) return;
   const c = getActiveChat();
-  if (c && c.messages.length > 0) return; // уже не новый юзер
+  if (c && c.messages.length > 0) return;
 
   const overlay = document.createElement("div");
   overlay.id = "langWelcomeOverlay";
@@ -3067,8 +2918,6 @@ function showLanguageWelcomeIfNeeded() {
   document.body.appendChild(overlay);
 }
 
-// ===== Инициализация =====
-
 (async function init() {
   checkRecoveryHash();
 
@@ -3098,12 +2947,6 @@ function showLanguageWelcomeIfNeeded() {
   updateAttachVisibility();
   updateImageToolsVisibility();
 
-  // ВАЖНО: раньше здесь стояло "if (c) {...}", но переменная c нигде не
-  // была объявлена в этой области видимости — это кидало ReferenceError
-  // и обрывало весь init() на этой строке. Из-за этого renderChatsPanel()
-  // и renderMessages() ниже вообще не вызывались после reload/логаута —
-  // именно поэтому казалось, что диалоги "слетают" при обновлении
-  // страницы (на самом деле данные были целы, просто не отрисовывались).
   const activeChat = getActiveChat();
   if (activeChat) {
     activeChat.lastVisit = Date.now();
