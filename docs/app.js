@@ -1363,32 +1363,43 @@ if (loginForm) {
 if (registerForm) {
   registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    showAuthError("");
+    showAuthError(""); // Сбрасываем старые сообщения об ошибках
     const email = document.getElementById("registerEmail").value.trim();
     const password = document.getElementById("registerPassword").value;
     const referralCode = localStorage.getItem(REFERRAL_CODE_KEY) || undefined;
+    
     try {
+      // 1. Отправляем запрос на регистрацию в ваш API/Supabase
       const res = await fetch(`${API_BASE}/register`, {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ email, password, referralCode }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      
+      // 2. ОБРАБОТКА ОШИБКИ: Если почты нет в белом списке, сюда прилетит текст из базы
       if (!res.ok || data.error) {
         showAuthError(data.error || "Не удалось зарегистрироваться");
         return;
       }
-      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-      localStorage.setItem(AUTH_EMAIL_KEY, data.email);
-      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      
+      // 3. УСПЕШНАЯ РЕГИСТРАЦИЯ: Очищаем временные данные
       localStorage.removeItem(REFERRAL_CODE_KEY);
       await importGuestChatsIfAny();
-      location.reload();
+      
+      // Выводим текст о том, что нужно проверить ящик (НЕ вслепую)
+      showAuthError("Регистрация прошла успешно! На вашу почту отправлено письмо со ссылкой для активации аккаунта. Пожалуйста, подтвердите её перед входом.");
+      
+      // Сбрасываем поля формы
+      registerForm.reset();
+
     } catch (err) {
+      // Ошибка, если пропал интернет во время клика
       showAuthError("Проблема с соединением, попробуй ещё раз");
     }
   });
 }
+
 
 if (guestBannerBtn) {
   guestBannerBtn.addEventListener("click", () => {
