@@ -3,7 +3,9 @@ const form = document.getElementById("composer");
 const input = document.getElementById("input");
 
 // ===== Прикрепление фото к сообщению (скрепка в composer) =====
-const MAX_IMAGE_DIMENSION = 1280;
+const MAX_IMAGE_DIMENSION = 1024;
+const IMAGE_TARGET_BASE64_LENGTH = 480000; // ориентир на итоговый размер base64 — экономия токенов
+const IMAGE_MIN_QUALITY = 0.5;
 let pendingImage = null; // dataURL текущего прикреплённого фото
 let attachPreviewBarEl = null;
 let attachBtnEl = null;
@@ -34,7 +36,17 @@ function resizeImageToDataUrl(file, maxDimension) {
         canvas.width = width;
         canvas.height = height;
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
+
+        // Подбираем качество JPEG так, чтобы держать итоговый размер в
+        // разумных пределах (экономия токенов при распознавании), но не
+        // роняем ниже порога, за которым фото перестаёт читаться ИИ.
+        let quality = 0.72;
+        let dataUrl = canvas.toDataURL("image/jpeg", quality);
+        while (dataUrl.length > IMAGE_TARGET_BASE64_LENGTH && quality > IMAGE_MIN_QUALITY) {
+          quality = Math.max(IMAGE_MIN_QUALITY, quality - 0.08);
+          dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(dataUrl);
       };
       img.src = reader.result;
     };
@@ -114,6 +126,241 @@ function buildAttachUI() {
 }
 
 buildAttachUI();
+
+// ===== Иконки (копирование, файл, скачать) =====
+
+function copyIconSvg() {
+  return (
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>'
+  );
+}
+
+function checkIconSvg() {
+  return (
+    '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="20 6 9 17 4 12"/></svg>'
+  );
+}
+
+function downloadIconSvg() {
+  return (
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>'
+  );
+}
+
+function fileIconSvg() {
+  return (
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+  );
+}
+
+// ===== Длинный вставленный/сгенерированный текст → файловая карточка =====
+
+const LONG_TEXT_CHAR_THRESHOLD = 600;
+const LONG_TEXT_LINE_THRESHOLD = 14;
+
+function shouldConvertToFile(text) {
+  if (!text) return false;
+  const lines = text.split("\n").length;
+  return text.length > LONG_TEXT_CHAR_THRESHOLD || lines > LONG_TEXT_LINE_THRESHOLD;
+}
+
+function deriveFileTitle(text) {
+  const firstLine = (text.split("\n").find((l) => l.trim().length > 0) || "").trim();
+  if (!firstLine) return "Текст";
+  return firstLine.length > 42 ? firstLine.slice(0, 42) + "…" : firstLine;
+}
+
+function guessFileExtension(content) {
+  const fenceMatch = content.match(/```([a-zA-Z0-9]+)/);
+  if (fenceMatch) {
+    const lang = fenceMatch[1].toLowerCase();
+    const map = { js: "js", javascript: "js", ts: "ts", python: "py", py: "py", html: "html", css: "css", json: "json", java: "java", cpp: "cpp", c: "c", bash: "sh", sh: "sh" };
+    if (map[lang]) return map[lang];
+  }
+  return "txt";
+}
+
+function slugifyFilename(title) {
+  const cleaned = title.replace(/[^\p{L}\p{N}\-_ ]/gu, "").trim().replace(/\s+/g, "-").slice(0, 40);
+  return cleaned || "file";
+}
+
+function formatFileMeta(content) {
+  const lines = content.split("\n").length;
+  const bytes = new Blob([content]).size;
+  const sizeStr = bytes < 1024 ? `${bytes} Б` : `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${lines} строк · ${sizeStr}`;
+}
+
+function openFileViewer(content, title) {
+  const overlay = document.createElement("div");
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+
+  const card = document.createElement("div");
+  card.style.cssText =
+    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;";
+
+  const header = document.createElement("div");
+  header.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--panther-line);";
+
+  const titleEl = document.createElement("div");
+  titleEl.style.cssText =
+    "font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  titleEl.textContent = title;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.style.cssText = "flex-shrink:0;background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:4px;line-height:0;";
+  closeBtn.innerHTML =
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  closeBtn.addEventListener("click", () => overlay.remove());
+
+  header.appendChild(titleEl);
+  header.appendChild(closeBtn);
+
+  const body = document.createElement("pre");
+  body.style.cssText =
+    "margin:0;padding:14px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;flex:1;";
+  body.textContent = content;
+
+  const footer = document.createElement("div");
+  footer.style.cssText = "display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--panther-line);";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.style.cssText =
+    "flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:8px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:12px;";
+  function setCopyBtnDefault() {
+    copyBtn.innerHTML = `${copyIconSvg()}<span>${tr("referralCopy")}</span>`;
+  }
+  setCopyBtnDefault();
+  let viewerCopyResetTimer = null;
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch (err) {
+      // буфер обмена недоступен — тихо промолчим
+    }
+    copyBtn.innerHTML = `${checkIconSvg()}<span>${tr("referralCopied")}</span>`;
+    if (viewerCopyResetTimer) clearTimeout(viewerCopyResetTimer);
+    viewerCopyResetTimer = setTimeout(setCopyBtnDefault, 30000);
+  });
+
+  const downloadBtn = document.createElement("a");
+  downloadBtn.style.cssText =
+    "flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:8px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:12px;text-decoration:none;";
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  downloadBtn.href = URL.createObjectURL(blob);
+  downloadBtn.download = `${slugifyFilename(title)}.${guessFileExtension(content)}`;
+  downloadBtn.innerHTML = `${downloadIconSvg()}<span>скачать</span>`;
+
+  footer.appendChild(copyBtn);
+  footer.appendChild(downloadBtn);
+
+  card.appendChild(header);
+  card.appendChild(body);
+  card.appendChild(footer);
+  overlay.appendChild(card);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+function createFileCard(content, title) {
+  const card = document.createElement("div");
+  card.style.cssText =
+    "display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--panther-line);border-radius:12px;background:var(--panther-soft);cursor:pointer;max-width:280px;";
+
+  const icon = document.createElement("span");
+  icon.style.cssText = "display:inline-flex;color:var(--text-dim);flex-shrink:0;";
+  icon.innerHTML = fileIconSvg();
+
+  const info = document.createElement("div");
+  info.style.cssText = "min-width:0;flex:1;";
+
+  const titleEl = document.createElement("div");
+  titleEl.style.cssText =
+    "font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+  titleEl.textContent = title;
+
+  const metaEl = document.createElement("div");
+  metaEl.style.cssText = "font-size:11px;color:var(--text-dim);margin-top:2px;";
+  metaEl.textContent = formatFileMeta(content);
+
+  info.appendChild(titleEl);
+  info.appendChild(metaEl);
+  card.appendChild(icon);
+  card.appendChild(info);
+  card.addEventListener("click", () => openFileViewer(content, title));
+  return card;
+}
+
+// ===== Вставка длинного текста в composer → превращаем в прикреплённый файл =====
+
+let pendingFile = null; // { content, title }
+let filePreviewBarEl = null;
+
+function buildFilePreviewUI() {
+  if (!form) return;
+
+  const bar = document.createElement("div");
+  bar.id = "filePreview";
+  bar.style.cssText =
+    "display:none;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:10px;";
+
+  const icon = document.createElement("span");
+  icon.style.cssText = "display:inline-flex;color:var(--text-dim);flex-shrink:0;";
+  icon.innerHTML = fileIconSvg();
+
+  const titleEl = document.createElement("span");
+  titleEl.style.cssText =
+    "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text);";
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.textContent = "убрать";
+  removeBtn.style.cssText = "flex-shrink:0;background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;";
+  removeBtn.addEventListener("click", () => {
+    pendingFile = null;
+    bar.style.display = "none";
+  });
+
+  bar.appendChild(icon);
+  bar.appendChild(titleEl);
+  bar.appendChild(removeBtn);
+  if (form.parentElement) form.parentElement.insertBefore(bar, form);
+
+  filePreviewBarEl = bar;
+  filePreviewBarEl._titleEl = titleEl;
+}
+
+function showFilePreview() {
+  if (!filePreviewBarEl || !pendingFile) return;
+  filePreviewBarEl._titleEl.textContent = pendingFile.title;
+  filePreviewBarEl.style.display = "flex";
+}
+
+buildFilePreviewUI();
+
+if (input) {
+  input.addEventListener("paste", (e) => {
+    const cd = e.clipboardData || window.clipboardData;
+    if (!cd) return;
+    const pasted = cd.getData("text");
+    if (pasted && shouldConvertToFile(pasted)) {
+      e.preventDefault();
+      pendingFile = { content: pasted, title: deriveFileTitle(pasted) };
+      showFilePreview();
+    }
+  });
+}
 
 // ===== Инструменты изображений: три точки → "сгенерировать" / "редактировать" =====
 // Кнопка стоит правее скрепки в том же поле ввода. Выбор режима открывает
@@ -259,12 +506,6 @@ const codeInput = document.getElementById("codeInput");
 const codeNewPassword = document.getElementById("codeNewPassword");
 const statusTextEl = document.getElementById("statusText");
 const statusDotsEl = document.getElementById("statusDots");
-const msgActionMenu = document.getElementById("msgActionMenu");
-const msgActionCopy = document.getElementById("msgActionCopy");
-const msgActionReply = document.getElementById("msgActionReply");
-const quotePreview = document.getElementById("quotePreview");
-const quotePreviewText = document.getElementById("quotePreviewText");
-const quotePreviewClose = document.getElementById("quotePreviewClose");
 
 // --- Новые элементы: крестики закрытия панелей, галерея, реферальная ссылка ---
 const chatsCloseBtn = document.getElementById("chatsCloseBtn");
@@ -280,7 +521,6 @@ const referralLinkText = document.getElementById("referralLinkText");
 const referralCopyBtn = document.getElementById("referralCopyBtn");
 const referralTermsText = document.getElementById("referralTermsText");
 const referralStatText = document.getElementById("referralStatText");
-const blurBackdrop = document.getElementById("blurBackdrop");
 
 // ===== Тема (светлая/тёмная) =====
 const THEME_KEY = "yari_theme";
@@ -439,8 +679,6 @@ const I18N = {
     registerPasswordPh: "пароль (от 6 символов)",
     registerSubmit: "зарегистрироваться",
     msgCopy: "копировать",
-    msgReply: "ответить",
-    quoteCancel: "отменить цитату",
     themeLight: "Светлая тема",
     themeDark: "Тёмная тема",
     remainingToday: "Осталось на сегодня",
@@ -482,8 +720,6 @@ const I18N = {
     registerPasswordPh: "password (min 6 characters)",
     registerSubmit: "sign up",
     msgCopy: "copy",
-    msgReply: "reply",
-    quoteCancel: "cancel quote",
     themeLight: "light theme",
     themeDark: "dark theme",
     remainingToday: "Left today",
@@ -561,9 +797,6 @@ function applyLanguage() {
   const registerSubmitEl = registerForm ? registerForm.querySelector('button[type="submit"]') : null;
   if (registerSubmitEl) registerSubmitEl.textContent = tr("registerSubmit");
 
-  if (msgActionCopy) msgActionCopy.textContent = tr("msgCopy");
-  if (msgActionReply) msgActionReply.textContent = tr("msgReply");
-  if (quotePreviewClose) quotePreviewClose.setAttribute("aria-label", tr("quoteCancel"));
   if (!isLoggedIn() && profileEmailEl) profileEmailEl.textContent = tr("guestUser");
 
   const galleryTitleEl = document.querySelector(".contact-gallery-title");
@@ -579,7 +812,7 @@ function applyLanguage() {
         ? `This is your referral link. For every person who follows it and starts chatting with Yari, you get <strong>1 image generation</strong> and <strong>400 tokens</strong>.`
         : `Ваша реферальная ссылка. За каждого человека, который перешёл по ней и начал общение с Yari, вы получаете <strong>1 генерацию изображения</strong> и <strong>400 токенов</strong>.`;
   }
-  if (referralCopyBtn) referralCopyBtn.textContent = tr("referralCopy");
+  if (referralCopyBtn) referralCopyBtn.title = tr("referralCopy");
 
   updateRemainingGensDisplay();
   updateThemeToggleBtn(getTheme());
@@ -1224,16 +1457,20 @@ if (referralCloseBtn) {
 }
 
 if (referralCopyBtn) {
+  referralCopyBtn.innerHTML = copyIconSvg();
+  referralCopyBtn.title = tr("referralCopy");
+  let referralCopyResetTimer = null;
   referralCopyBtn.addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(referralLinkText.textContent);
-      referralCopyBtn.textContent = tr("referralCopied");
-      setTimeout(() => {
-        referralCopyBtn.textContent = tr("referralCopy");
-      }, 1500);
     } catch (err) {
       // буфер обмена недоступен — тихо промолчим
     }
+    referralCopyBtn.innerHTML = checkIconSvg();
+    if (referralCopyResetTimer) clearTimeout(referralCopyResetTimer);
+    referralCopyResetTimer = setTimeout(() => {
+      referralCopyBtn.innerHTML = copyIconSvg();
+    }, 30000);
   });
 }
 
@@ -1363,54 +1600,32 @@ if (loginForm) {
 if (registerForm) {
   registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    showAuthError(""); // Сброс старых текстов
-    
+    showAuthError("");
     const email = document.getElementById("registerEmail").value.trim();
     const password = document.getElementById("registerPassword").value;
     const referralCode = localStorage.getItem(REFERRAL_CODE_KEY) || undefined;
-    
-    const isSchoolEmail = email.toLowerCase().endsWith('@milky.ru');
-    
     try {
       const res = await fetch(`${API_BASE}/register`, {
         method: "POST",
         headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ email, password, referralCode }),
       });
-      const data = await res.json().catch(() => ({}));
-      
-      // Если база вернула ошибку (например, фейковый школьник не прошел белый список)
+      const data = await res.json();
       if (!res.ok || data.error) {
         showAuthError(data.error || "Не удалось зарегистрироваться");
         return;
       }
-      
-      // СЦЕНАРИЙ 1: Если регистрировался легитимный ученик школы
-      if (isSchoolEmail) {
-        // Наш SQL-триггер уже подтвердил его аккаунт, поэтому мы СРАЗУ входим в систему
-        localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-        localStorage.setItem(AUTH_EMAIL_KEY, data.email);
-        if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-        
-        localStorage.removeItem(REFERRAL_CODE_KEY);
-        await importGuestChatsIfAny();
-        
-        // Перезагружаем и впускаем в чат
-        location.reload();
-      } 
-      // СЦЕНАРИЙ 2: Если регистрировался обычный пользователь (gmail, yandex и т.д.)
-      else {
-        // База ждет подтверждения ссылки из письма. Выводим ему предупреждение.
-        showAuthError("Регистрация прошла успешно! На вашу почту отправлено письмо со ссылкой для активации аккаунта. Пожалуйста, подтвердите её перед входом.");
-        registerForm.reset();
-      }
-
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      localStorage.setItem(AUTH_EMAIL_KEY, data.email);
+      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      localStorage.removeItem(REFERRAL_CODE_KEY);
+      await importGuestChatsIfAny();
+      location.reload();
     } catch (err) {
       showAuthError("Проблема с соединением, попробуй ещё раз");
     }
   });
 }
-
 
 if (guestBannerBtn) {
   guestBannerBtn.addEventListener("click", () => {
@@ -1641,8 +1856,6 @@ function ensureDevPanelContainers() {
   return { left, right };
 }
 
-const ASSUMED_TOKENS_PER_MESSAGE = 100;
-
 function ensureUsageBlock() {
   let usageEl = document.getElementById("usageInfo");
   if (!usageEl && profileEmailEl && profileEmailEl.parentElement) {
@@ -1708,7 +1921,6 @@ function renderUsageGauge(container, data) {
   const remaining = Math.max(0, budget - used);
   const remainingPct = budget > 0 ? (remaining / budget) * 100 : 0;
   const usedPct = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 100;
-  const estLeft = Math.max(0, Math.round(remaining / ASSUMED_TOKENS_PER_MESSAGE));
 
   let colorRgb = "185,232,166";
   if (remainingPct < 7) {
@@ -1730,7 +1942,7 @@ function renderUsageGauge(container, data) {
   label.style.cssText =
     "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
     "font-size:11px;color:rgba(244,238,242,0.8);white-space:nowrap;pointer-events:none;";
-  label.textContent = `${used} / ${budget} токенов (≈${estLeft} сообщ.)`;
+  label.textContent = `${used} / ${budget} токенов`;
 
   track.appendChild(fill);
   track.appendChild(label);
@@ -2209,7 +2421,7 @@ function addMessageToDOM(role, text, opts = {}) {
   if (opts.image) {
     const img = document.createElement("img");
     img.src = opts.image;
-    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (displayText ? "margin-bottom:6px;" : "");
+    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (displayText && !opts.isLongFile ? "margin-bottom:6px;" : "");
     bubble.appendChild(img);
   }
   if (opts.generatedImage) {
@@ -2222,7 +2434,12 @@ function addMessageToDOM(role, text, opts = {}) {
     imgWrap.addEventListener("click", () => openImageLightbox(opts.generatedImage));
     bubble.appendChild(imgWrap);
   }
-  if (displayText) {
+  if (opts.isLongFile && displayText) {
+    // Длинный текст (вставленный пользователем или длинный ответ Яри) —
+    // показываем как файловую карточку вместо сплошного текста в бабле.
+    const card = createFileCard(displayText, opts.fileTitle || deriveFileTitle(displayText));
+    bubble.appendChild(card);
+  } else if (displayText) {
     const textEl = document.createElement("div");
     if (role === "assistant" && window.marked) {
       // Ответы Яри могут содержать маркдаун (заголовки, жирный текст,
@@ -2262,15 +2479,33 @@ function addMessageToDOM(role, text, opts = {}) {
     wrap.appendChild(pillsRow);
   }
 
+  const actionsBar = document.createElement("div");
+  actionsBar.style.cssText = "display:flex;gap:2px;margin-top:4px;";
+
+  const iconBtnStyle =
+    "background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:4px 6px;border-radius:6px;line-height:0;";
+
+  const copyMsgBtn = document.createElement("button");
+  copyMsgBtn.type = "button";
+  copyMsgBtn.title = tr("msgCopy");
+  copyMsgBtn.style.cssText = iconBtnStyle;
+  copyMsgBtn.innerHTML = copyIconSvg();
+  let copyMsgResetTimer = null;
+  copyMsgBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      // буфер обмена недоступен — тихо промолчим
+    }
+    copyMsgBtn.innerHTML = checkIconSvg();
+    if (copyMsgResetTimer) clearTimeout(copyMsgResetTimer);
+    copyMsgResetTimer = setTimeout(() => {
+      copyMsgBtn.innerHTML = copyIconSvg();
+    }, 30000);
+  });
+  actionsBar.appendChild(copyMsgBtn);
+
   if (role === "assistant") {
-    const feedbackBar = document.createElement("div");
-    feedbackBar.style.display = "flex";
-    feedbackBar.style.gap = "2px";
-    feedbackBar.style.marginTop = "4px";
-
-    const iconBtnStyle =
-      "background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:4px 6px;border-radius:6px;line-height:0;";
-
     function thumbIconSvg(flipped) {
       const transform = flipped ? "transform:rotate(180deg);" : "";
       return (
@@ -2282,6 +2517,7 @@ function addMessageToDOM(role, text, opts = {}) {
     }
 
     const up = document.createElement("button");
+    up.type = "button";
     up.innerHTML = thumbIconSvg(false);
     up.title = "нравится";
     up.style.cssText = iconBtnStyle;
@@ -2293,6 +2529,7 @@ function addMessageToDOM(role, text, opts = {}) {
     });
 
     const down = document.createElement("button");
+    down.type = "button";
     down.innerHTML = thumbIconSvg(true);
     down.title = "не нравится";
     down.style.cssText = iconBtnStyle;
@@ -2313,10 +2550,11 @@ function addMessageToDOM(role, text, opts = {}) {
       });
     });
 
-    feedbackBar.appendChild(up);
-    feedbackBar.appendChild(down);
-    wrap.appendChild(feedbackBar);
+    actionsBar.appendChild(up);
+    actionsBar.appendChild(down);
   }
+
+  wrap.appendChild(actionsBar);
 
   chat.appendChild(wrap);
   chat.scrollTop = chat.scrollHeight;
@@ -2335,6 +2573,8 @@ function renderMessages() {
       image: m.image,
       generatedImage: m.generatedImage,
       usedSearch: m.usedSearch,
+      isLongFile: m.isLongFile,
+      fileTitle: m.fileTitle,
     })
   );
 }
@@ -2493,7 +2733,7 @@ function needsSearchHeuristic(text) {
   return /(сегодня|сейчас|последн\w*|актуальн\w*|новост\w*|курс\s+(доллара|валют|рубля)|погод\w*|кто\s+(сейчас|такой|такая)|что\s+случилось|произошло|в\s+этом\s+году|202[4-9]|вышел\s+ли|когда\s+выйдет|расписание|цена\s+на)/.test(t);
 }
 
-async function sendMessage(text) {
+async function sendMessage(text, fileTitleOverride) {
   const c = getActiveChat();
 
   const limitKey = isLoggedIn() ? USER_LIMIT_KEY : GUEST_LIMIT_KEY;
@@ -2518,10 +2758,13 @@ async function sendMessage(text) {
   pendingImage = null;
   if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
 
-  c.messages.push({ role: "user", content: text, image: imageToSend || undefined });
+  const isLongFile = shouldConvertToFile(text);
+  const fileTitle = isLongFile ? (fileTitleOverride || deriveFileTitle(text)) : null;
+
+  c.messages.push({ role: "user", content: text, image: imageToSend || undefined, isLongFile, fileTitle });
   let titleChanged = false;
   if (c.messages.length === 1) {
-    c.title = text.slice(0, 30) || "фото";
+    c.title = (fileTitle || text).slice(0, 30) || "фото";
     titleChanged = true;
   }
 
@@ -2532,7 +2775,7 @@ async function sendMessage(text) {
   }
   incrementDailyUsage(limitKey);
 
-  addMessageToDOM("user", text, { image: imageToSend });
+  addMessageToDOM("user", text, { image: imageToSend, isLongFile, fileTitle });
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -2615,7 +2858,16 @@ async function sendMessage(text) {
     refreshMyUsage();
 
     if (data.reply) {
-      c.messages.push({ role: "assistant", content: data.reply, usedSearch: data.usedSearch || false });
+      const replyIsLongFile = shouldConvertToFile(data.reply);
+      const replyFileTitle = replyIsLongFile ? deriveFileTitle(data.reply) : null;
+
+      c.messages.push({
+        role: "assistant",
+        content: data.reply,
+        usedSearch: data.usedSearch || false,
+        isLongFile: replyIsLongFile,
+        fileTitle: replyFileTitle,
+      });
       c.nextProactiveAt = Date.now() + randomGapMs();
 
       if (isLoggedIn()) {
@@ -2624,7 +2876,11 @@ async function sendMessage(text) {
       } else {
         saveStore(store);
       }
-      addMessageToDOM("assistant", data.reply, { usedSearch: data.usedSearch });
+      addMessageToDOM("assistant", data.reply, {
+        usedSearch: data.usedSearch,
+        isLongFile: replyIsLongFile,
+        fileTitle: replyFileTitle,
+      });
     } else {
       addMessageToDOM("assistant", "…что-то пошло не так, я задумалась.");
     }
@@ -2683,7 +2939,7 @@ async function checkProactive() {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text && !pendingImage) return;
+  if (!text && !pendingImage && !pendingFile) return;
 
   if (imageMode) {
     if (!text) return;
@@ -2714,16 +2970,15 @@ form.addEventListener("submit", async (e) => {
   }
 
   let finalText = text;
-  if (pendingQuote) {
-    const quoted = pendingQuote
-      .split("\n")
-      .map((line) => "» " + line)
-      .join("\n");
-    finalText = `${quoted}\n\n${text}`;
+  let fileTitleOverride = null;
+  if (pendingFile) {
+    finalText = (text ? text + "\n\n" : "") + pendingFile.content;
+    fileTitleOverride = pendingFile.title;
   }
-  clearQuote();
+  pendingFile = null;
+  if (filePreviewBarEl) filePreviewBarEl.style.display = "none";
 
-  sendMessage(finalText);
+  sendMessage(finalText, fileTitleOverride);
 });
 
 input.addEventListener("input", () => {
@@ -2731,156 +2986,7 @@ input.addEventListener("input", () => {
   input.style.height = Math.min(input.scrollHeight, 120) + "px";
 });
 
-let pendingQuote = null;
 let pendingReactionNote = null;
-
-function setQuote(text) {
-  pendingQuote = text;
-  if (quotePreviewText) {
-    quotePreviewText.textContent = text.length > 140 ? text.slice(0, 140) + "…" : text;
-  }
-  if (quotePreview) quotePreview.style.display = "flex";
-  if (input) input.focus();
-}
-
-function clearQuote() {
-  pendingQuote = null;
-  if (quotePreview) quotePreview.style.display = "none";
-}
-
-if (quotePreviewClose) {
-  quotePreviewClose.addEventListener("click", clearQuote);
-}
-
-let msgActionText = "";
-
-function showMsgActionMenu(x, y, text) {
-  if (!msgActionMenu || !text) return;
-  msgActionText = text;
-  msgActionMenu.style.display = "flex";
-  const menuWidth = msgActionMenu.offsetWidth || 160;
-  const clampedX = Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8));
-  const clampedY = Math.max(8, y);
-  msgActionMenu.style.left = clampedX + "px";
-  msgActionMenu.style.top = clampedY + "px";
-}
-
-function hideMsgActionMenu() {
-  if (!msgActionMenu) return;
-  msgActionMenu.style.display = "none";
-  msgActionText = "";
-}
-
-if (msgActionCopy) {
-  msgActionCopy.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(msgActionText);
-    } catch (err) {
-      // буфер обмена недоступен — тихо промолчим
-    }
-    hideMsgActionMenu();
-  });
-}
-
-if (msgActionReply) {
-  msgActionReply.addEventListener("click", () => {
-    setQuote(msgActionText);
-    hideMsgActionMenu();
-  });
-}
-
-document.addEventListener("click", (e) => {
-  if (msgActionMenu && msgActionMenu.style.display !== "none" && !msgActionMenu.contains(e.target)) {
-    hideMsgActionMenu();
-  }
-});
-
-let pressTimer = null;
-let longHoldTimer = null;
-let pressStart = null;
-let longHoldBubbleEl = null;
-
-function clearLongHold() {
-  if (longHoldTimer) {
-    clearTimeout(longHoldTimer);
-    longHoldTimer = null;
-  }
-  if (blurBackdrop) blurBackdrop.classList.remove("active");
-  if (longHoldBubbleEl) {
-    longHoldBubbleEl.classList.remove("msg-bubble-highlighted");
-    longHoldBubbleEl = null;
-  }
-}
-
-chat.addEventListener("pointerdown", (e) => {
-  const bubble = e.target.closest(".msg-bubble");
-  if (!bubble) return;
-  pressStart = { x: e.clientX, y: e.clientY };
-  pressTimer = setTimeout(() => {
-    pressTimer = null;
-    showMsgActionMenu(e.clientX, Math.max(e.clientY - 56, 8), bubble.textContent);
-  }, 450);
-  longHoldTimer = setTimeout(() => {
-    longHoldTimer = null;
-    longHoldBubbleEl = bubble;
-    bubble.classList.add("msg-bubble-highlighted");
-    if (blurBackdrop) blurBackdrop.classList.add("active");
-  }, 3000);
-});
-
-chat.addEventListener("pointermove", (e) => {
-  if (!pressStart) return;
-  const dx = Math.abs(e.clientX - pressStart.x);
-  const dy = Math.abs(e.clientY - pressStart.y);
-  if (dx > 8 || dy > 8) {
-    if (pressTimer) {
-      clearTimeout(pressTimer);
-      pressTimer = null;
-    }
-    clearLongHold();
-  }
-});
-
-chat.addEventListener("pointerup", () => {
-  if (pressTimer) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-  clearLongHold();
-});
-
-chat.addEventListener("pointercancel", () => {
-  if (pressTimer) {
-    clearTimeout(pressTimer);
-    pressTimer = null;
-  }
-  clearLongHold();
-});
-
-if (blurBackdrop) {
-  blurBackdrop.addEventListener("click", () => {
-    clearLongHold();
-    hideMsgActionMenu();
-  });
-}
-
-document.addEventListener("selectionchange", () => {
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-
-  const range = sel.getRangeAt(0);
-  const anchorNode = range.commonAncestorContainer;
-  const anchorEl = anchorNode.nodeType === 1 ? anchorNode : anchorNode.parentElement;
-  const bubble = anchorEl ? anchorEl.closest(".msg-bubble") : null;
-  if (!bubble) return;
-
-  const text = sel.toString().trim();
-  if (!text) return;
-
-  const rect = range.getBoundingClientRect();
-  if (!rect || (rect.width === 0 && rect.height === 0)) return;
-  showMsgActionMenu(rect.left, Math.max(rect.top - 52, 8), text);
-});
 
 const LANG_CHOSEN_KEY = "yari_lang_chosen";
 
