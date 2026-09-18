@@ -157,6 +157,57 @@ function fileIconSvg() {
   );
 }
 
+function linkIconSvg() {
+  return (
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+  );
+}
+
+function splitMessageIntoSegments(text) {
+  const segments = [];
+  const fenceRe = /```(\w+)?\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = fenceRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index).trim();
+      if (before) segments.push({ type: "text", content: before });
+    }
+    segments.push({ type: "code", content: match[2].replace(/\n$/, ""), lang: (match[1] || "").toLowerCase() });
+    lastIndex = fenceRe.lastIndex;
+  }
+  const rest = text.slice(lastIndex).trim();
+  if (rest) segments.push({ type: "text", content: rest });
+  if (segments.length === 0) segments.push({ type: "text", content: text });
+  return segments;
+}
+
+async function publishSite(html, btn) {
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.textContent = "публикую…";
+  try {
+    const res = await fetch(`${API_BASE}/publish-site`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ html }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) {
+      btn.textContent = "не получилось";
+      setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2500);
+      return;
+    }
+    try { await navigator.clipboard.writeText(data.url); } catch (e) {}
+    btn.textContent = "ссылка скопирована";
+    setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 30000);
+  } catch (err) {
+    btn.textContent = "ошибка сети";
+    setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2500);
+  }
+}
+
 // ===== Длинный вставленный/сгенерированный текст → файловая карточка =====
 
 const LONG_TEXT_CHAR_THRESHOLD = 600;
@@ -319,8 +370,17 @@ function openFileViewer(content, title) {
   downloadBtn.download = `${slugifyFilename(title)}.${guessFileExtension(content)}`;
   downloadBtn.innerHTML = `${downloadIconSvg()}<span>скачать</span>`;
 
-  footer.appendChild(copyBtn);
+footer.appendChild(copyBtn);
   footer.appendChild(downloadBtn);
+
+  if (isHtmlDocument(content)) {
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.style.cssText = copyBtn.style.cssText;
+    publishBtn.innerHTML = `${linkIconSvg()}<span>опубликовать</span>`;
+    publishBtn.addEventListener("click", () => publishSite(content, publishBtn));
+    footer.appendChild(publishBtn);
+  }
 
   card.appendChild(header);
   card.appendChild(body);
@@ -2493,27 +2553,40 @@ function addMessageToDOM(role, text, opts = {}) {
     imgWrap.addEventListener("click", () => openImageLightbox(opts.generatedImage));
     bubble.appendChild(imgWrap);
   }
-  if (opts.isLongFile && displayText) {
-    // Длинный текст (вставленный пользователем или длинный ответ Яри) —
-    // показываем как файловую карточку вместо сплошного текста в бабле.
+  if (role === "assistant" && displayText) {
+    // Текст и код в ответе Яри рендерятся раздельно: обычный текст —
+    // как обычно, длинный код/html — отдельной файловой карточкой рядом.
+    splitMessageIntoSegments(displayText).forEach((seg) => {
+      if (seg.type === "code" && shouldConvertToFile(seg.content)) {
+        bubble.appendChild(createFileCard(seg.content, deriveFileTitle(seg.content)));
+      } else if (seg.type === "code") {
+        const codeWrap = document.createElement("div");
+        codeWrap.className = "msg-markdown";
+        const rawHtml = window.marked
+          ? marked.parse("```" + (seg.lang || "") + "\n" + seg.content + "\n```", { breaks: true })
+          : `<pre><code>${seg.content}</code></pre>`;
+        codeWrap.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+        bubble.appendChild(codeWrap);
+      } else {
+        const textEl = document.createElement("div");
+        if (window.marked) {
+          textEl.className = "msg-markdown";
+          const rawHtml = marked.parse(seg.content, { breaks: true });
+          textEl.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+        } else {
+          textEl.className = "msg-plain-text";
+          textEl.textContent = seg.content;
+        }
+        bubble.appendChild(textEl);
+      }
+    });
+  } else if (opts.isLongFile && displayText) {
     const card = createFileCard(displayText, opts.fileTitle || deriveFileTitle(displayText));
     bubble.appendChild(card);
   } else if (displayText) {
     const textEl = document.createElement("div");
-    if (role === "assistant" && window.marked) {
-      // Ответы Яри могут содержать маркдаун (заголовки, жирный текст,
-      // списки) — рендерим его в HTML вместо того, чтобы показывать
-      // "##"/"**" как есть. DOMPurify чистит результат перед вставкой.
-      textEl.className = "msg-markdown";
-      const rawHtml = marked.parse(displayText, { breaks: true });
-      textEl.innerHTML = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
-    } else {
-      // Обычный (не маркдаун) текст — сообщения пользователя и т.п.
-      // Перенос строк сохраняется через white-space:pre-wrap в CSS
-      // (класс msg-plain-text).
-      textEl.className = "msg-plain-text";
-      textEl.textContent = displayText;
-    }
+    textEl.className = "msg-plain-text";
+    textEl.textContent = displayText;
     bubble.appendChild(textEl);
   }
 
