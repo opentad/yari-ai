@@ -174,7 +174,12 @@ function deriveFileTitle(text) {
   return firstLine.length > 42 ? firstLine.slice(0, 42) + "…" : firstLine;
 }
 
+function isHtmlDocument(text) {
+  return /^\s*<!doctype html|^\s*<html/i.test(text);
+}
+
 function guessFileExtension(content) {
+  if (isHtmlDocument(content)) return "html";
   const fenceMatch = content.match(/```([a-zA-Z0-9]+)/);
   if (fenceMatch) {
     const lang = fenceMatch[1].toLowerCase();
@@ -224,10 +229,64 @@ function openFileViewer(content, title) {
   header.appendChild(titleEl);
   header.appendChild(closeBtn);
 
-  const body = document.createElement("pre");
-  body.style.cssText =
-    "margin:0;padding:14px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;flex:1;";
-  body.textContent = content;
+ let body;
+  if (isHtmlDocument(content)) {
+    body = document.createElement("div");
+    body.style.cssText = "flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;";
+
+    const tabs = document.createElement("div");
+    tabs.style.cssText = "display:flex;gap:4px;padding:0 14px;border-bottom:1px solid var(--panther-line);flex-shrink:0;";
+
+    const previewTab = document.createElement("button");
+    previewTab.type = "button";
+    previewTab.textContent = "Превью";
+    const codeTab = document.createElement("button");
+    codeTab.type = "button";
+    codeTab.textContent = "Код";
+    [previewTab, codeTab].forEach((btn) => {
+      btn.style.cssText = "background:transparent;border:none;color:var(--text-dim);font-size:12px;padding:9px 10px;cursor:pointer;border-bottom:2px solid transparent;";
+    });
+    previewTab.style.color = "var(--text)";
+    previewTab.style.borderBottomColor = "var(--peach)";
+
+    const iframe = document.createElement("iframe");
+    iframe.sandbox = "allow-scripts";
+    iframe.srcdoc = content;
+    iframe.style.cssText = "flex:1;border:none;background:#fff;";
+
+    const pre = document.createElement("pre");
+    pre.style.cssText =
+      "margin:0;padding:14px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;flex:1;display:none;";
+    pre.textContent = content;
+
+    previewTab.addEventListener("click", () => {
+      previewTab.style.color = "var(--text)";
+      previewTab.style.borderBottomColor = "var(--peach)";
+      codeTab.style.color = "var(--text-dim)";
+      codeTab.style.borderBottomColor = "transparent";
+      iframe.style.display = "block";
+      pre.style.display = "none";
+    });
+    codeTab.addEventListener("click", () => {
+      codeTab.style.color = "var(--text)";
+      codeTab.style.borderBottomColor = "var(--peach)";
+      previewTab.style.color = "var(--text-dim)";
+      previewTab.style.borderBottomColor = "transparent";
+      pre.style.display = "block";
+      iframe.style.display = "none";
+    });
+
+    tabs.appendChild(previewTab);
+    tabs.appendChild(codeTab);
+    body.appendChild(tabs);
+    body.appendChild(iframe);
+    body.appendChild(pre);
+  } else {
+    body = document.createElement("pre");
+    body.style.cssText =
+      "margin:0;padding:14px;overflow:auto;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.5;color:var(--text);white-space:pre-wrap;word-break:break-word;flex:1;";
+    body.textContent = content;
+  }
 
   const footer = document.createElement("div");
   footer.style.cssText = "display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--panther-line);";
