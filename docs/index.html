@@ -175,7 +175,7 @@
       <div class="referral-title">Реферальная ссылка</div>
       <div class="referral-link-box">
         <span id="referralLinkText">загрузка…</span>
-        <button type="button" id="referralCopyBtn">копировать</button>
+        <button type="button" id="referralCopyBtn" title="копировать" aria-label="копировать"></button>
       </div>
       <div class="referral-terms" id="referralTermsText">
         Ваша реферальная ссылка. За каждого человека, который перешёл по ней и начал общение с Yari, вы получаете <strong>1 генерацию изображения</strong> и <strong>400 токенов</strong>.
@@ -217,18 +217,7 @@
 
     <main class="chat" id="chat"></main>
 
-    <div class="msg-action-menu" id="msgActionMenu" style="display:none;">
-      <button type="button" id="msgActionCopy">копировать</button>
-      <button type="button" id="msgActionReply">ответить</button>
-    </div>
-
-    <div class="blur-backdrop" id="blurBackdrop"></div>
-
     <div class="composer-wrap">
-      <div class="quote-preview" id="quotePreview" style="display:none;">
-        <div class="quote-preview-text" id="quotePreviewText"></div>
-        <button type="button" class="quote-preview-close" id="quotePreviewClose" aria-label="отменить цитату">✕</button>
-      </div>
       <form class="composer" id="composer">
         <textarea id="input" placeholder="напиши что-нибудь…" rows="1"></textarea>
         <button type="submit" id="send" aria-label="отправить" title="отправить">
