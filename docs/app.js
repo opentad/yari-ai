@@ -584,6 +584,13 @@ function buildImageToolsUI() {
 
 function setImageMode(mode) {
   imageMode = mode;
+  if (mode && pendingFile) {
+    input.value = pendingFile.content;
+    pendingFile = null;
+    if (filePreviewBarEl) filePreviewBarEl.style.display = "none";
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 120) + "px";
+  }
   if (!imageModeBarEl) return;
   if (!mode) {
     imageModeBarEl.style.display = "none";
