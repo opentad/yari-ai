@@ -258,8 +258,12 @@ function openFileViewer(content, title) {
     "position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
 
   const card = document.createElement("div");
-  card.style.cssText =
-    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;";
+  if (isHtmlDocument(content)) {
+    // сайту нужно много места: без явной высоты рамка превью схлопывается
+    card.style.maxWidth = "min(1000px, 100%)";
+    card.style.height = "88vh";
+    card.style.maxHeight = "88vh";
+  }
 
   const header = document.createElement("div");
   header.style.cssText =
