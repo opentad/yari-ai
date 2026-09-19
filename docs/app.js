@@ -3285,7 +3285,13 @@ function showLanguageWelcomeIfNeeded() {
   const card = document.createElement("div");
   card.style.cssText =
     "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:var(--text);font-family:inherit;";
-
+if (isHtmlDocument(content)) {
+    // сайту нужно много места: без явной высоты рамка превью схлопывается
+    card.style.maxWidth = "min(1000px, 100%)";
+    card.style.height = "88vh";
+    card.style.maxHeight = "88vh";
+  }
+  
   const title = document.createElement("div");
   title.style.cssText =
     "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;margin-bottom:8px;color:var(--text);";
