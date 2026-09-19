@@ -1663,12 +1663,122 @@ function showAuthError(msg) {
   if (authError) authError.textContent = msg || "";
 }
 
+let confirmForm = null;
+let confirmEmail = "";
+
 function hideAllAuthSubforms() {
   if (loginForm) loginForm.style.display = "none";
   if (registerForm) registerForm.style.display = "none";
   if (forgotForm) forgotForm.style.display = "none";
   if (resetForm) resetForm.style.display = "none";
   if (codeForm) codeForm.style.display = "none";
+  if (confirmForm) confirmForm.style.display = "none";
+}
+
+// ===== Подтверждение почты кодом (после регистрации / входа без подтверждения) =====
+
+function buildConfirmForm() {
+  if (confirmForm) return;
+
+  confirmForm = document.createElement("form");
+  confirmForm.className = "auth-form";
+  confirmForm.id = "confirmForm";
+  confirmForm.style.display = "none";
+
+  const codeField = document.createElement("input");
+  codeField.type = "text";
+  codeField.inputMode = "numeric";
+  codeField.autocomplete = "one-time-code";
+  codeField.maxLength = 10;
+  codeField.placeholder = "код из письма";
+  codeField.required = true;
+
+  const submitBtn = document.createElement("button");
+  submitBtn.type = "submit";
+  submitBtn.textContent = "подтвердить";
+
+  const linkStyle = "background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;padding:4px;";
+
+  const resendBtn = document.createElement("button");
+  resendBtn.type = "button";
+  resendBtn.textContent = "отправить код ещё раз";
+  resendBtn.style.cssText = linkStyle;
+
+  const backBtn = document.createElement("button");
+  backBtn.type = "button";
+  backBtn.textContent = "назад";
+  backBtn.style.cssText = linkStyle;
+
+  confirmForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showAuthError("");
+    const code = codeField.value.trim();
+    if (!code || !confirmEmail) return;
+    try {
+      const res = await fetch(`${API_BASE}/verify-email`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ email: confirmEmail, code }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showAuthError(data.error || "Не удалось подтвердить почту");
+        return;
+      }
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      localStorage.setItem(AUTH_EMAIL_KEY, data.email);
+      if (data.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
+      localStorage.removeItem(REFERRAL_CODE_KEY);
+      await importGuestChatsIfAny();
+      location.reload();
+    } catch (err) {
+      showAuthError("Проблема с соединением, попробуй ещё раз");
+    }
+  });
+
+  resendBtn.addEventListener("click", async () => {
+    showAuthError("");
+    if (!confirmEmail) return;
+    try {
+      const res = await fetch(`${API_BASE}/resend-code`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ email: confirmEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) {
+        showAuthError(data.error || "Не удалось отправить код");
+        return;
+      }
+      showAuthError("Код отправлен ещё раз. Проверь почту и папку спам.");
+    } catch (err) {
+      showAuthError("Проблема с соединением, попробуй ещё раз");
+    }
+  });
+
+  backBtn.addEventListener("click", () => {
+    if (tabRegister) tabRegister.click();
+  });
+
+  confirmForm.appendChild(codeField);
+  confirmForm.appendChild(submitBtn);
+  confirmForm.appendChild(resendBtn);
+  confirmForm.appendChild(backBtn);
+  confirmForm._codeField = codeField;
+
+  if (authError && authError.parentNode) authError.parentNode.insertBefore(confirmForm, authError);
+  else if (authPanel) authPanel.appendChild(confirmForm);
+}
+
+function showConfirmStep(email) {
+  buildConfirmForm();
+  confirmEmail = email;
+  hideAllAuthSubforms();
+  confirmForm.style.display = "flex";
+  confirmForm._codeField.value = "";
+  confirmForm._codeField.focus();
+  showAuthError("Мы отправили код на " + email + ". Введи его ниже (проверь и папку спам).");
+}
 }
 
 if (tabLogin && tabRegister) {
@@ -1702,6 +1812,10 @@ if (loginForm) {
       });
       const data = await res.json();
       if (!res.ok || data.error) {
+        if (data.needsConfirmation) {
+          showConfirmStep(data.email || email);
+          return;
+        }
         showAuthError(data.error || "Не удалось войти");
         return;
       }
@@ -1730,8 +1844,12 @@ if (registerForm) {
         body: JSON.stringify({ email, password, referralCode }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) {
+    if (!res.ok || data.error) {
         showAuthError(data.error || "Не удалось зарегистрироваться");
+        return;
+      }
+      if (data.needsConfirmation) {
+        showConfirmStep(data.email || email);
         return;
       }
       localStorage.setItem(AUTH_TOKEN_KEY, data.token);
