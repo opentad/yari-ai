@@ -33,6 +33,14 @@
   /* настраиваемые в профиле */
   --user-bubble-color: var(--peach);
   --bubble-radius: 14px;
+
+  /* неоморфизм: тени (тёмная тема) */
+  --neo-raised: 6px 6px 14px rgba(0, 0, 0, 0.55), -5px -5px 12px rgba(255, 255, 255, 0.045);
+  --neo-raised-sm: 3px 3px 7px rgba(0, 0, 0, 0.5), -2px -2px 6px rgba(255, 255, 255, 0.05);
+  --neo-inset: inset 4px 4px 9px rgba(0, 0, 0, 0.55), inset -3px -3px 8px rgba(255, 255, 255, 0.04);
+  --neo-inset-sm: inset 2px 2px 5px rgba(0, 0, 0, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.04);
+  --neo-pressed: inset 3px 3px 7px rgba(0, 0, 0, 0.55), inset -2px -2px 6px rgba(255, 255, 255, 0.04);
+  --neo-pressed-sm: inset 2px 2px 4px rgba(0, 0, 0, 0.5), inset -1px -1px 4px rgba(255, 255, 255, 0.04);
 }
 
 /* Светлая тема: розовый акцент остаётся, тёмные поверхности становятся
@@ -54,6 +62,12 @@
   --glow-2: rgba(185, 166, 232, 0.34);
   --glow-3: rgba(185, 166, 232, 0.14);
   --divider-subtle: rgba(0, 0, 0, 0.08);
+  --neo-raised: 6px 6px 14px rgba(200, 165, 178, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.95);
+  --neo-raised-sm: 3px 3px 7px rgba(200, 165, 178, 0.5), -3px -3px 7px rgba(255, 255, 255, 0.95);
+  --neo-inset: inset 4px 4px 9px rgba(200, 165, 178, 0.55), inset -4px -4px 9px rgba(255, 255, 255, 0.9);
+  --neo-inset-sm: inset 2px 2px 5px rgba(200, 165, 178, 0.5), inset -2px -2px 5px rgba(255, 255, 255, 0.9);
+  --neo-pressed: inset 3px 3px 7px rgba(200, 165, 178, 0.55), inset -3px -3px 7px rgba(255, 255, 255, 0.9);
+  --neo-pressed-sm: inset 2px 2px 4px rgba(200, 165, 178, 0.5), inset -2px -2px 4px rgba(255, 255, 255, 0.9);
 }
 
 * { box-sizing: border-box; }
@@ -1565,4 +1579,108 @@ textarea:focus-visible {
     animation: none;
     opacity: 0.7;
   }
+}
+
+/* ===== Неоморфизм (точечно). Чтобы откатить — удали всё от этой строки до конца файла ===== */
+
+/* Поле ввода — вдавленный желобок */
+#input {
+  background: var(--panther);
+  border-color: transparent;
+  box-shadow: var(--neo-inset);
+}
+
+#input:focus {
+  border-color: var(--lavender);
+}
+
+/* Кнопка отправки — выпуклая, при нажатии вдавливается */
+#send {
+  box-shadow: var(--neo-raised);
+  transition: box-shadow 0.15s ease;
+}
+
+#send:active:not(:disabled) {
+  box-shadow: var(--neo-pressed);
+}
+
+/* Мелкие кнопки шапки и панелей — выпуклые */
+.chats-toggle,
+.new-chat-btn,
+.icon-btn,
+.profile-edit-btn,
+.file-viewer-btn,
+.option-pill {
+  border-color: transparent;
+  box-shadow: var(--neo-raised-sm);
+  transition: box-shadow 0.15s ease, color 0.2s ease;
+}
+
+.chats-toggle:active,
+.new-chat-btn:active,
+.icon-btn:active,
+.profile-edit-btn:active,
+.file-viewer-btn:active,
+.option-pill:active {
+  box-shadow: var(--neo-pressed-sm);
+}
+
+/* Вкладки входа: активная вдавлена */
+.auth-tab {
+  border-color: transparent;
+  box-shadow: var(--neo-raised-sm);
+}
+
+.auth-tab.active {
+  box-shadow: var(--neo-pressed-sm);
+}
+
+/* Поля в панели входа и в профиле, блок реферальной ссылки — вдавленные */
+.auth-form input,
+.profile-edit-inline input,
+.referral-link-box {
+  border-color: transparent;
+  box-shadow: var(--neo-inset-sm);
+}
+
+.auth-form input:focus,
+.profile-edit-inline input:focus {
+  border-color: var(--lavender);
+}
+
+/* Акцентные кнопки — чуть выпуклее */
+.auth-form button[type="submit"],
+.profile-icon-confirm,
+.referral-link-box button {
+  box-shadow: var(--neo-raised-sm);
+}
+
+/* Цвета баблов: активный вдавлен */
+.swatch {
+  box-shadow: var(--neo-raised-sm);
+}
+
+.swatch.active {
+  box-shadow: var(--neo-pressed-sm);
+}
+
+/* Ползунок угловатости: вдавленная дорожка, выпуклый кружок */
+.radius-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--panther);
+  box-shadow: var(--neo-inset-sm);
+}
+
+.radius-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, var(--peach), var(--lavender));
+  box-shadow: var(--neo-raised-sm);
 }
