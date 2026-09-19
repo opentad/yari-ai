@@ -1787,7 +1787,6 @@ function showConfirmStep(email) {
   confirmForm._codeField.focus();
   showAuthError("Мы отправили код на " + email + ". Введи его ниже (проверь и папку спам).");
 }
-}
 
 if (tabLogin && tabRegister) {
   tabLogin.addEventListener("click", () => {
