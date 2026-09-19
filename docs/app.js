@@ -166,7 +166,7 @@ function linkIconSvg() {
 
 function splitMessageIntoSegments(text) {
   const segments = [];
-  const fenceRe = /```(\w+)?\n([\s\S]*?)```/g;
+  const fenceRe = /```(\w+)?\n([\s\S]*?)(?:```|$)/g;
   let lastIndex = 0;
   let match;
   while ((match = fenceRe.exec(text)) !== null) {
@@ -2715,6 +2715,12 @@ function addMessageToDOM(role, text, opts = {}) {
     bubble.appendChild(textEl);
   }
 
+  if (opts.attachedFile) {
+    const attachedCard = createFileCard(opts.attachedFile.content, opts.attachedFile.title);
+    if (bubble.childNodes.length) attachedCard.style.marginTop = "8px";
+    bubble.appendChild(attachedCard);
+  }
+
   wrap.appendChild(label);
   wrap.appendChild(bubble);
 
@@ -2831,7 +2837,8 @@ function renderMessages() {
       generatedImage: m.generatedImage,
       usedSearch: m.usedSearch,
       isLongFile: m.isLongFile,
-      fileTitle: m.fileTitle,
+     fileTitle: m.fileTitle,
+      attachedFile: m.attachedFile,
     })
   );
 }
@@ -2990,7 +2997,14 @@ function needsSearchHeuristic(text) {
   return /(сегодня|сейчас|последн\w*|актуальн\w*|новост\w*|курс\s+(доллара|валют|рубля)|погод\w*|кто\s+(сейчас|такой|такая)|что\s+случилось|произошло|в\s+этом\s+году|202[4-9]|вышел\s+ли|когда\s+выйдет|расписание|цена\s+на)/.test(t);
 }
 
-async function sendMessage(text, fileTitleOverride) {
+// Если к сообщению прикреплён файл (вставленный длинный текст), модель получает его
+// текст вместе с текстом сообщения; на экране файл остаётся отдельной карточкой.
+function withFileText(m) {
+  if (!m.attachedFile) return m;
+  return { ...m, content: (m.content ? m.content + "\n\n" : "") + m.attachedFile.content };
+}
+
+async function sendMessage(text, attachedFile) {
   const c = getActiveChat();
 
   const limitKey = isLoggedIn() ? USER_LIMIT_KEY : GUEST_LIMIT_KEY;
@@ -3015,13 +3029,24 @@ async function sendMessage(text, fileTitleOverride) {
   pendingImage = null;
   if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
 
-  const isLongFile = shouldConvertToFile(text);
-  const fileTitle = isLongFile ? (fileTitleOverride || deriveFileTitle(text)) : null;
+// Прикреплённый файл остаётся отдельным блоком: текст, который человек пишет
+  // сам, в него не вливается. Одиночное очень длинное сообщение, как и раньше,
+  // превращается в файл.
+  const isLongFile = !attachedFile && shouldConvertToFile(text);
+  const fileTitle = isLongFile ? deriveFileTitle(text) : null;
+  const attachedFileData = attachedFile ? { content: attachedFile.content, title: attachedFile.title } : null;
 
-  c.messages.push({ role: "user", content: text, image: imageToSend || undefined, isLongFile, fileTitle });
+  c.messages.push({
+    role: "user",
+    content: text,
+    image: imageToSend || undefined,
+    isLongFile,
+    fileTitle,
+    attachedFile: attachedFileData || undefined,
+  });
   let titleChanged = false;
   if (c.messages.length === 1) {
-    c.title = (fileTitle || text).slice(0, 30) || "фото";
+    c.title = (fileTitle || (attachedFileData && attachedFileData.title) || text).slice(0, 30) || "фото";
     titleChanged = true;
   }
 
@@ -3032,7 +3057,7 @@ async function sendMessage(text, fileTitleOverride) {
   }
   incrementDailyUsage(limitKey);
 
-  addMessageToDOM("user", text, { image: imageToSend, isLongFile, fileTitle });
+  addMessageToDOM("user", text, { image: imageToSend, isLongFile, fileTitle, attachedFile: attachedFileData });
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -3074,7 +3099,7 @@ async function sendMessage(text, fileTitleOverride) {
       }),
       body: JSON.stringify({
         chatId: c.id,
-        messages: c.messages.map((m, idx, arr) => {
+        messages: c.messages.map(withFileText).map((m, idx, arr) => {
           const isLast = idx === arr.length - 1;
           if (m.image && isLast) {
             return {
@@ -3226,16 +3251,11 @@ form.addEventListener("submit", async (e) => {
     if (redeemed) return;
   }
 
-  let finalText = text;
-  let fileTitleOverride = null;
-  if (pendingFile) {
-    finalText = (text ? text + "\n\n" : "") + pendingFile.content;
-    fileTitleOverride = pendingFile.title;
-  }
+  const attachedFile = pendingFile;
   pendingFile = null;
   if (filePreviewBarEl) filePreviewBarEl.style.display = "none";
 
-  sendMessage(finalText, fileTitleOverride);
+  sendMessage(text, attachedFile);
 });
 
 input.addEventListener("input", () => {
