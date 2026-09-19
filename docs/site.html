@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Yari — сайт</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #110d13; color: #f4eef2; font-family: sans-serif; }
+  #msg { display: flex; align-items: center; justify-content: center; height: 100%; padding: 20px; text-align: center; }
+  iframe { display: none; width: 100%; height: 100%; border: none; background: #fff; }
+</style>
+</head>
+<body>
+<div id="msg">загружаю…</div>
+<iframe id="frame" sandbox="allow-scripts"></iframe>
+<script>
+  const API_BASE = "https://prvwpqesbbmtzezxqcsl.supabase.co/functions/v1/super-responder";
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBydndwcWVzYmJtdHplenhxY3NsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxOTAwMjEsImV4cCI6MjEwMjc2NjAyMX0.cxcvjVPWrmpQolGvkrS8KaQYVKxfgjx9BA_brFXkhbs";
+
+  (async function () {
+    const msg = document.getElementById("msg");
+    const frame = document.getElementById("frame");
+    const id = new URLSearchParams(location.search).get("id");
+    if (!id) { msg.textContent = "В ссылке нет номера сайта"; return; }
+    try {
+      const res = await fetch(API_BASE + "/site-data/" + encodeURIComponent(id), {
+        headers: { apikey: ANON_KEY },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || !data.html) { msg.textContent = "Сайт не найден"; return; }
+      frame.srcdoc = data.html;
+      frame.style.display = "block";
+      msg.style.display = "none";
+    } catch (e) {
+      msg.textContent = "Не удалось загрузить сайт";
+    }
+  })();
+</script>
+</body>
+</html>
