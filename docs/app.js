@@ -470,6 +470,7 @@ buildFilePreviewUI();
 
 if (input) {
   input.addEventListener("paste", (e) => {
+   if (imageMode) return;
     const cd = e.clipboardData || window.clipboardData;
     if (!cd) return;
     const pasted = cd.getData("text");
