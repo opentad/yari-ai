@@ -3288,8 +3288,8 @@ function showLanguageWelcomeIfNeeded() {
 if (isHtmlDocument(content)) {
     // сайту нужно много места: без явной высоты рамка превью схлопывается
     card.style.maxWidth = "min(1000px, 100%)";
-    card.style.height = "88vh";
-    card.style.maxHeight = "88vh";
+    card.style.height = "88%";
+    card.style.maxHeight = "88%";
   }
   
   const title = document.createElement("div");
