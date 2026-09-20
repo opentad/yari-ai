@@ -254,7 +254,6 @@ async function publishSite(html, btn) {
     setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2500);
   }
 }
-}
 
 // ===== Длинный вставленный/сгенерированный текст → файловая карточка =====
 
@@ -308,11 +307,13 @@ function openFileViewer(content, title) {
     "position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
 
   const card = document.createElement("div");
+  card.style.cssText =
+    "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:14px;width:100%;max-width:520px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;";
   if (isHtmlDocument(content)) {
     // сайту нужно много места: без явной высоты рамка превью схлопывается
     card.style.maxWidth = "min(1000px, 100%)";
-    card.style.height = "88vh";
-    card.style.maxHeight = "88vh";
+    card.style.height = "100%";
+    card.style.maxHeight = "100%";
   }
 
   const header = document.createElement("div");
@@ -431,7 +432,6 @@ footer.appendChild(copyBtn);
     const publishBtn = document.createElement("button");
     publishBtn.type = "button";
     publishBtn.style.cssText = copyBtn.style.cssText;
-    publishBtn.innerHTML = getPublishedUrl(content)
     publishBtn.innerHTML = getPublishedUrl(content)
       ? `${linkIconSvg()}<span>сайт опубликован</span>`
       : `${linkIconSvg()}<span>опубликовать</span>`;
@@ -3338,12 +3338,6 @@ function showLanguageWelcomeIfNeeded() {
   const card = document.createElement("div");
   card.style.cssText =
     "background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:16px;padding:32px 24px;max-width:360px;width:100%;text-align:center;color:var(--text);font-family:inherit;";
-if (isHtmlDocument(content)) {
-    // сайту нужно много места: без явной высоты рамка превью схлопывается
-    card.style.maxWidth = "min(1000px, 100%)";
-    card.style.height = "88%";
-    card.style.maxHeight = "88%";
-  }
   
   const title = document.createElement("div");
   title.style.cssText =
