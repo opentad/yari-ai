@@ -220,6 +220,8 @@ function shouldConvertToFile(text) {
 }
 
 function deriveFileTitle(text) {
+  const htmlTitle = isHtmlDocument(text) ? (text.match(/<title[^>]*>([^<]{1,80})<\/title>/i) || [])[1] : null;
+  if (htmlTitle && htmlTitle.trim()) return htmlTitle.trim();
   const firstLine = (text.split("\n").find((l) => l.trim().length > 0) || "").trim();
   if (!firstLine) return "Текст";
   return firstLine.length > 42 ? firstLine.slice(0, 42) + "…" : firstLine;
