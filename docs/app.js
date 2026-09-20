@@ -183,7 +183,54 @@ function splitMessageIntoSegments(text) {
   return segments;
 }
 
+const PUBLISHED_SITES_KEY = "yari_published_sites_v1";
+
+// Короткий "отпечаток" текста сайта — по нему помним, какой именно сайт уже опубликован.
+function siteFingerprint(html) {
+  let h = 5381;
+  for (let i = 0; i < html.length; i++) h = ((h << 5) + h + html.charCodeAt(i)) | 0;
+  return html.length + ":" + h;
+}
+
+function getPublishedUrl(html) {
+  try {
+    const map = JSON.parse(localStorage.getItem(PUBLISHED_SITES_KEY)) || {};
+    return map[siteFingerprint(html)] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function savePublishedUrl(html, url) {
+  let map = {};
+  try {
+    map = JSON.parse(localStorage.getItem(PUBLISHED_SITES_KEY)) || {};
+  } catch (e) {
+    map = {};
+  }
+  map[siteFingerprint(html)] = url;
+  localStorage.setItem(PUBLISHED_SITES_KEY, JSON.stringify(map));
+}
+
+function setPublishedBtnLabel(btn) {
+  btn.innerHTML = `${linkIconSvg()}<span>сайт опубликован</span>`;
+}
+
+async function copyPublishedLink(url, btn) {
+  try { await navigator.clipboard.writeText(url); } catch (e) {}
+  btn.innerHTML = `${checkIconSvg()}<span>ссылка скопирована</span>`;
+  if (btn._resetTimer) clearTimeout(btn._resetTimer);
+  btn._resetTimer = setTimeout(() => setPublishedBtnLabel(btn), 30000);
+}
+
 async function publishSite(html, btn) {
+  // Сайт уже публиковали — новую ссылку не создаём, просто копируем прежнюю.
+  const existing = getPublishedUrl(html);
+  if (existing) {
+    await copyPublishedLink(existing, btn);
+    return;
+  }
+
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.textContent = "публикую…";
@@ -199,13 +246,14 @@ async function publishSite(html, btn) {
       setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2500);
       return;
     }
-    try { await navigator.clipboard.writeText(data.url); } catch (e) {}
-    btn.textContent = "ссылка скопирована";
-    setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 30000);
+    savePublishedUrl(html, data.url);
+    btn.disabled = false;
+    await copyPublishedLink(data.url, btn);
   } catch (err) {
     btn.textContent = "ошибка сети";
     setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2500);
   }
+}
 }
 
 // ===== Длинный вставленный/сгенерированный текст → файловая карточка =====
@@ -383,7 +431,10 @@ footer.appendChild(copyBtn);
     const publishBtn = document.createElement("button");
     publishBtn.type = "button";
     publishBtn.style.cssText = copyBtn.style.cssText;
-    publishBtn.innerHTML = `${linkIconSvg()}<span>опубликовать</span>`;
+    publishBtn.innerHTML = getPublishedUrl(content)
+    publishBtn.innerHTML = getPublishedUrl(content)
+      ? `${linkIconSvg()}<span>сайт опубликован</span>`
+      : `${linkIconSvg()}<span>опубликовать</span>`;
     publishBtn.addEventListener("click", () => publishSite(content, publishBtn));
     footer.appendChild(publishBtn);
   }
