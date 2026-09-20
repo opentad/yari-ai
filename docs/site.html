@@ -29,6 +29,8 @@
       const data = await res.json().catch(() => null);
       if (!res.ok || !data || !data.html) { msg.textContent = "Сайт не найден"; return; }
       frame.srcdoc = data.html;
+      const parsed = new DOMParser().parseFromString(data.html, "text/html");
+      if (parsed.title) document.title = parsed.title;
       frame.style.display = "block";
       msg.style.display = "none";
     } catch (e) {
