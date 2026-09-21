@@ -1793,7 +1793,6 @@ function updateAttachVisibility() {
   if (attachBtnEl) attachBtnEl.style.display = isLoggedIn() ? "" : "none";
   if (!isLoggedIn()) clearPendingImages();
  }
-}
 
 function handleLogout() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -3262,7 +3261,7 @@ async function sendMessage(text, attachedFile) {
   }
   incrementDailyUsage(limitKey);
 
-  addMessageToDOM("user", text, { image: imageToSend, isLongFile, fileTitle, attachedFile: attachedFileData });
+  addMessageToDOM("user", text, { images: imageUrls, isLongFile, fileTitle, attachedFile: attachedFileData });
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -3304,6 +3303,7 @@ async function sendMessage(text, attachedFile) {
       }),
       body: JSON.stringify({
         chatId: c.id,
+        reactionNote: pendingReactionNote,
         messages: c.messages.map(withFileText).map((m, idx, arr) => {
           const isLast = idx === arr.length - 1;
           const urls = Array.isArray(m.images) ? m.images : [];
