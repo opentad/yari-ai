@@ -3192,6 +3192,35 @@ function withFileText(m) {
   return { ...m, content: (m.content ? m.content + "\n\n" : "") + m.attachedFile.content };
 }
 
+// Читает ответ /chat-stream (строки JSON). Возвращает { reply, usedSearch } или { error }.
+async function readChatStream(res) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let reply = "";
+  let usedSearch = false;
+  let error = null;
+  let finished = false;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() || "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let ev;
+      try { ev = JSON.parse(line); } catch (e) { continue; }
+      if (ev.d) reply += ev.d;
+      else if (ev.error) error = ev.error;
+      else if (ev.done) { finished = true; usedSearch = !!ev.usedSearch; }
+    }
+  }
+  if (error) return { error };
+  if (!finished && !reply) return { error: "поток оборвался" };
+  return { reply, usedSearch };
+}
+
 async function sendMessage(text, attachedFile) {
   const c = getActiveChat();
 
@@ -3295,7 +3324,7 @@ async function sendMessage(text, attachedFile) {
   setStatus(true);
 
   try {
-    const res = await fetch(`${API_BASE}/chat`, {
+    const res = await fetch(`${API_BASE}/chat-stream`, {
       method: "POST",
       headers: authHeaders({
         "Content-Type": "application/json",
@@ -3343,9 +3372,13 @@ async function sendMessage(text, attachedFile) {
       return;
     }
 
-    const data = await res.json();
+    const data = await readChatStream(res);
     typingEl.remove();
     refreshMyUsage();
+    if (data.error) {
+      addMessageToDOM("assistant", `у меня тут что-то с соединением: ${data.error}. попробуй ещё раз.`);
+      return;
+    }
 
     if (data.reply) {
       const replyIsLongFile = shouldConvertToFile(data.reply);
