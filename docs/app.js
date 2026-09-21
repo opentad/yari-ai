@@ -6,7 +6,8 @@ const input = document.getElementById("input");
 const MAX_IMAGE_DIMENSION = 1024;
 const IMAGE_TARGET_BASE64_LENGTH = 480000; // ориентир на итоговый размер base64 — экономия токенов
 const IMAGE_MIN_QUALITY = 0.5;
-let pendingImage = null; // dataURL текущего прикреплённого фото
+const MAX_PHOTOS = 4; // максимум фото в одном сообщении
+let pendingImages = []; // dataURL прикреплённых фото (до MAX_PHOTOS)
 let attachPreviewBarEl = null;
 let attachBtnEl = null;
 let imageToolsBtnEl = null;
@@ -54,6 +55,134 @@ function resizeImageToDataUrl(file, maxDimension) {
   });
 }
 
+// Миниатюры прикреплённых фото над полем ввода. noteText — короткая подсказка
+// (например "максимум 4 фото"); без неё показывается счётчик "2/4".
+function renderAttachPreviews(noteText) {
+  const bar = attachPreviewBarEl;
+  if (!bar) return;
+  bar.innerHTML = "";
+  if (!pendingImages.length && !noteText) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "flex";
+  bar.style.flexWrap = "wrap";
+  pendingImages.forEach((src, i) => {
+    const item = document.createElement("div");
+    item.style.cssText = "position:relative;width:44px;height:44px;flex-shrink:0;";
+    const img = document.createElement("img");
+    img.src = src;
+    img.style.cssText = "width:44px;height:44px;object-fit:cover;border-radius:8px;display:block;";
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.textContent = "✕";
+    rm.title = "убрать фото";
+    rm.style.cssText =
+      "position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--panther);color:var(--text);font-size:10px;line-height:18px;padding:0;cursor:pointer;";
+    rm.addEventListener("click", () => {
+      pendingImages.splice(i, 1);
+      renderAttachPreviews();
+    });
+    item.appendChild(img);
+    item.appendChild(rm);
+    bar.appendChild(item);
+  });
+  const note = document.createElement("span");
+  note.style.cssText = "font-size:11px;color:var(--text-dim);margin-left:auto;";
+  note.textContent = noteText || pendingImages.length + "/" + MAX_PHOTOS;
+  bar.appendChild(note);
+}
+
+function showAttachNote(text) {
+  renderAttachPreviews(text);
+  setTimeout(() => renderAttachPreviews(), 2500);
+}
+
+function clearPendingImages() {
+  pendingImages = [];
+  renderAttachPreviews();
+}
+
+// Загружает фото (dataURL) в хранилище по одному и возвращает список публичных ссылок.
+async function uploadPhotos(dataUrls) {
+  const urls = [];
+  for (const image of dataUrls) {
+    const res = await fetch(`${API_BASE}/upload-photo`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ image }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || "не удалось загрузить фото");
+    urls.push(data.url);
+  }
+  return urls;
+}
+
+// Миниатюры прикреплённых фото над полем ввода. noteText — короткая подсказка
+// (например "максимум 4 фото"); без неё показывается счётчик "2/4".
+function renderAttachPreviews(noteText) {
+  const bar = attachPreviewBarEl;
+  if (!bar) return;
+  bar.innerHTML = "";
+  if (!pendingImages.length && !noteText) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "flex";
+  bar.style.flexWrap = "wrap";
+  pendingImages.forEach((src, i) => {
+    const item = document.createElement("div");
+    item.style.cssText = "position:relative;width:44px;height:44px;flex-shrink:0;";
+    const img = document.createElement("img");
+    img.src = src;
+    img.style.cssText = "width:44px;height:44px;object-fit:cover;border-radius:8px;display:block;";
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.textContent = "✕";
+    rm.title = "убрать фото";
+    rm.style.cssText =
+      "position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--panther);color:var(--text);font-size:10px;line-height:18px;padding:0;cursor:pointer;";
+    rm.addEventListener("click", () => {
+      pendingImages.splice(i, 1);
+      renderAttachPreviews();
+    });
+    item.appendChild(img);
+    item.appendChild(rm);
+    bar.appendChild(item);
+  });
+  const note = document.createElement("span");
+  note.style.cssText = "font-size:11px;color:var(--text-dim);margin-left:auto;";
+  note.textContent = noteText || pendingImages.length + "/" + MAX_PHOTOS;
+  bar.appendChild(note);
+}
+
+function showAttachNote(text) {
+  renderAttachPreviews(text);
+  setTimeout(() => renderAttachPreviews(), 2500);
+}
+
+function clearPendingImages() {
+  pendingImages = [];
+  renderAttachPreviews();
+}
+
+// Загружает фото (dataURL) в хранилище по одному и возвращает список публичных ссылок.
+async function uploadPhotos(dataUrls) {
+  const urls = [];
+  for (const image of dataUrls) {
+    const res = await fetch(`${API_BASE}/upload-photo`, {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ image }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) throw new Error(data.error || "не удалось загрузить фото");
+    urls.push(data.url);
+  }
+  return urls;
+}
+
 function buildAttachUI() {
   if (!form || !input) return;
 
@@ -79,43 +208,33 @@ function buildAttachUI() {
   const fileInput = document.createElement("input");
   fileInput.type = "file";
   fileInput.accept = "image/*";
+  fileInput.multiple = true;
   fileInput.style.display = "none";
 
   const previewBar = document.createElement("div");
   previewBar.id = "attachPreview";
   previewBar.style.cssText =
-    "display:none;align-items:center;gap:8px;padding:6px 8px;margin-bottom:6px;background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:10px;";
-
-  const previewImg = document.createElement("img");
-  previewImg.style.cssText = "width:36px;height:36px;object-fit:cover;border-radius:6px;";
-
-  const previewRemove = document.createElement("button");
-  previewRemove.type = "button";
-  previewRemove.textContent = "убрать фото";
-  previewRemove.style.cssText = "background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:12px;";
-
-  previewBar.appendChild(previewImg);
-  previewBar.appendChild(previewRemove);
+    "display:none;align-items:center;gap:8px;padding:8px;margin-bottom:6px;background:var(--panther-soft);border:1px solid var(--panther-line);border-radius:10px;";
   attachPreviewBarEl = previewBar;
 
   attachBtn.addEventListener("click", () => fileInput.click());
 
-  fileInput.addEventListener("change", () => {
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) return;
-    resizeImageToDataUrl(file, MAX_IMAGE_DIMENSION)
-      .then((dataUrl) => {
-        pendingImage = dataUrl;
-        previewImg.src = dataUrl;
-        previewBar.style.display = "flex";
-      })
-      .catch(() => alert("не удалось прочитать фото"));
+  fileInput.addEventListener("change", async () => {
+    const files = Array.from(fileInput.files || []);
     fileInput.value = "";
-  });
-
-  previewRemove.addEventListener("click", () => {
-    pendingImage = null;
-    previewBar.style.display = "none";
+    if (!files.length) return;
+    const room = Math.max(0, MAX_PHOTOS - pendingImages.length);
+    const chosen = files.slice(0, room);
+    let note = files.length > chosen.length ? "максимум " + MAX_PHOTOS + " фото" : "";
+    for (const file of chosen) {
+      try {
+        pendingImages.push(await resizeImageToDataUrl(file, MAX_IMAGE_DIMENSION));
+      } catch (e) {
+        note = "не удалось прочитать фото";
+      }
+    }
+    if (note) showAttachNote(note);
+    else renderAttachPreviews();
   });
 
   wrapper.appendChild(attachBtn);
@@ -1548,6 +1667,7 @@ function collectChatImages() {
   const images = [];
   c.messages.forEach((m) => {
     if (m.image) images.push(m.image);
+    if (Array.isArray(m.images)) images.push(...m.images);
     if (m.generatedImage) images.push(m.generatedImage);
   });
   return images;
@@ -1671,10 +1791,8 @@ function renderAuthUI() {
 
 function updateAttachVisibility() {
   if (attachBtnEl) attachBtnEl.style.display = isLoggedIn() ? "" : "none";
-  if (!isLoggedIn()) {
-    pendingImage = null;
-    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
-  }
+  if (!isLoggedIn()) clearPendingImages();
+ }
 }
 
 function handleLogout() {
@@ -2719,11 +2837,24 @@ function addMessageToDOM(role, text, opts = {}) {
 
   const bubble = document.createElement("div");
   bubble.className = "msg-bubble";
-  if (opts.image) {
+  const bubbleImages = opts.images && opts.images.length ? opts.images : (opts.image ? [opts.image] : []);
+  if (bubbleImages.length === 1) {
     const img = document.createElement("img");
-    img.src = opts.image;
-    img.style.cssText = "max-width:100%;border-radius:10px;display:block;" + (displayText && !opts.isLongFile ? "margin-bottom:6px;" : "");
+    img.src = bubbleImages[0];
+    img.style.cssText = "max-width:100%;border-radius:10px;display:block;cursor:pointer;" + (displayText && !opts.isLongFile ? "margin-bottom:6px;" : "");
+    img.addEventListener("click", () => openImageLightbox(bubbleImages[0]));
     bubble.appendChild(img);
+  } else if (bubbleImages.length > 1) {
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(2,1fr);gap:4px;" + (displayText && !opts.isLongFile ? "margin-bottom:6px;" : "");
+    bubbleImages.forEach((src) => {
+      const img = document.createElement("img");
+      img.src = src;
+      img.style.cssText = "width:100%;height:110px;object-fit:cover;border-radius:8px;display:block;cursor:pointer;";
+      img.addEventListener("click", () => openImageLightbox(src));
+      grid.appendChild(img);
+    });
+    bubble.appendChild(grid);
   }
   if (opts.generatedImage) {
     const imgWrap = document.createElement("div");
@@ -2896,6 +3027,7 @@ function renderMessages() {
       isLongFile: m.isLongFile,
      fileTitle: m.fileTitle,
       attachedFile: m.attachedFile,
+      images: m.images,
     })
   );
 }
@@ -3082,9 +3214,25 @@ async function sendMessage(text, attachedFile) {
     if (isLoggedIn()) updateChatMeta(c.id, { proactiveOff: true });
   }
 
-  const imageToSend = isLoggedIn() ? pendingImage : null;
-  pendingImage = null;
-  if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
+  const imagesToSend = isLoggedIn() ? pendingImages.slice() : [];
+  clearPendingImages();
+
+  // Фото загружаем в хранилище: в сообщении храним ссылки, а не тяжёлые base64-картинки.
+  let imageUrls = [];
+  if (imagesToSend.length) {
+    setStatus(true);
+    try {
+      imageUrls = await uploadPhotos(imagesToSend);
+    } catch (err) {
+      setStatus(false);
+      pendingImages = imagesToSend;
+      renderAttachPreviews();
+      input.value = text;
+      addMessageToDOM("assistant", "не получилось загрузить фото: " + ((err && err.message) || "ошибка сети") + ". попробуй ещё раз.");
+      return;
+    }
+    setStatus(false);
+  }
 
 // Прикреплённый файл остаётся отдельным блоком: текст, который человек пишет
   // сам, в него не вливается. Одиночное очень длинное сообщение, как и раньше,
@@ -3096,7 +3244,7 @@ async function sendMessage(text, attachedFile) {
   c.messages.push({
     role: "user",
     content: text,
-    image: imageToSend || undefined,
+    images: imageUrls.length ? imageUrls : undefined,
     isLongFile,
     fileTitle,
     attachedFile: attachedFileData || undefined,
@@ -3158,17 +3306,20 @@ async function sendMessage(text, attachedFile) {
         chatId: c.id,
         messages: c.messages.map(withFileText).map((m, idx, arr) => {
           const isLast = idx === arr.length - 1;
-          if (m.image && isLast) {
-            return {
-              role: m.role,
-              content: [
-                { type: "text", text: m.content || "" },
-                { type: "image_url", image_url: { url: m.image } },
-              ],
-            };
+          const urls = Array.isArray(m.images) ? m.images : [];
+          // Старые сообщения с одним фото хранят его как base64 в m.image.
+          const legacy = m.image ? [m.image] : [];
+          if ((urls.length || legacy.length) && isLast) {
+            const parts = [];
+            if (m.content) parts.push({ type: "text", text: m.content });
+            // Ссылки на фото — отдельным текстом, чтобы Яри могла использовать их (например, на сайте).
+            if (urls.length) parts.push({ type: "text", text: "[Фото пользователя, ссылки: " + urls.join(" ") + "]" });
+            [...urls, ...legacy].forEach((u) => parts.push({ type: "image_url", image_url: { url: u } }));
+            return { role: m.role, content: parts };
           }
-          if (m.image && !isLast) {
-            return { role: m.role, content: (m.content ? m.content + " " : "") + "[фото]" };
+          if (urls.length || legacy.length) {
+            const note = urls.length ? " [фото: " + urls.join(" ") + "]" : " [фото]";
+            return { role: m.role, content: (m.content || "") + note };
           }
           return { role: m.role, content: m.content };
         }),
@@ -3278,21 +3429,20 @@ async function checkProactive() {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const text = input.value.trim();
-  if (!text && !pendingImage && !pendingFile) return;
+  if (!text && !pendingImages.length && !pendingFile) return;
 
   if (imageMode) {
     if (!text) return;
-    if (imageMode === "edit" && !pendingImage) {
+    if (imageMode === "edit" && !pendingImages.length) {
       addMessageToDOM("assistant", "пожалуйста, добавьте изображение");
       return;
     }
     const mode = imageMode;
-    const sourceImage = pendingImage;
+    const sourceImage = pendingImages[0];
     input.value = "";
     input.style.height = "auto";
     setImageMode(null);
-    pendingImage = null;
-    if (attachPreviewBarEl) attachPreviewBarEl.style.display = "none";
+    clearPendingImages();
     await handleGenerateImageFlow(text, mode, sourceImage);
     return;
   }
