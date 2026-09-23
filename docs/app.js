@@ -376,10 +376,11 @@ async function publishSite(html, btn) {
 
 // ===== Длинный вставленный/сгенерированный текст → файловая карточка =====
 
-const LONG_TEXT_CHAR_THRESHOLD = 600;
-const LONG_TEXT_LINE_THRESHOLD = 14;
+const LONG_TEXT_CHAR_THRESHOLD = 4000;
+const LONG_TEXT_LINE_THRESHOLD = 40;
 
 function shouldConvertToFile(text) {
+  if (isHtmlDocument(text)) return true;
   if (!text) return false;
   const lines = text.split("\n").length;
   return text.length > LONG_TEXT_CHAR_THRESHOLD || lines > LONG_TEXT_LINE_THRESHOLD;
@@ -3245,6 +3246,13 @@ async function sendMessage(text, attachedFile) {
   const imagesToSend = isLoggedIn() ? pendingImages.slice() : [];
   clearPendingImages();
 
+  const isLongFile = !attachedFile && shouldConvertToFile(text);
+  const fileTitle = isLongFile ? deriveFileTitle(text) : null;
+  const attachedFileData = attachedFile ? { content: attachedFile.content, title: attachedFile.title } : null;
+  addMessageToDOM("user", text, { images: imagesToSend, isLongFile, fileTitle, attachedFile: attachedFileData });
+  const userMsgEl = chat.lastElementChild;
+  setMsgStatus(userMsgEl, "pending");
+
   // Фото загружаем в хранилище: в сообщении храним ссылки, а не тяжёлые base64-картинки.
   let imageUrls = [];
   if (imagesToSend.length) {
@@ -3253,6 +3261,7 @@ async function sendMessage(text, attachedFile) {
       imageUrls = await uploadPhotos(imagesToSend);
     } catch (err) {
       setStatus(false);
+      userMsgEl.remove();
       pendingImages = imagesToSend;
       renderAttachPreviews();
       input.value = text;
@@ -3261,13 +3270,6 @@ async function sendMessage(text, attachedFile) {
     }
     setStatus(false);
   }
-
-// Прикреплённый файл остаётся отдельным блоком: текст, который человек пишет
-  // сам, в него не вливается. Одиночное очень длинное сообщение, как и раньше,
-  // превращается в файл.
-  const isLongFile = !attachedFile && shouldConvertToFile(text);
-  const fileTitle = isLongFile ? deriveFileTitle(text) : null;
-  const attachedFileData = attachedFile ? { content: attachedFile.content, title: attachedFile.title } : null;
 
   c.messages.push({
     role: "user",
@@ -3283,14 +3285,17 @@ async function sendMessage(text, attachedFile) {
     titleChanged = true;
   }
 
-  if (isLoggedIn()) {
-    await persistChatToServer(c, titleChanged);
-  } else {
-    saveStore(store);
+  try {
+    if (isLoggedIn()) {
+      await persistChatToServer(c, titleChanged);
+    } else {
+      saveStore(store);
+    }
+    setMsgStatus(userMsgEl, "sent");
+  } catch (err) {
+    setMsgStatus(userMsgEl, "failed");
   }
   incrementDailyUsage(limitKey);
-
-  addMessageToDOM("user", text, { images: imageUrls, isLongFile, fileTitle, attachedFile: attachedFileData });
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -3483,12 +3488,9 @@ form.addEventListener("submit", async (e) => {
   input.value = "";
   input.style.height = "auto";
 
-  if (text) {
-    const unlocked = await tryUnlock(text);
-    if (unlocked) return;
-
-    const redeemed = await tryRedeemCode(text);
-    if (redeemed) return;
+  if (text && text.length <= 40 && !/\s/.test(text)) {
+    const [unlocked, redeemed] = await Promise.all([tryUnlock(text), tryRedeemCode(text)]);
+    if (unlocked || redeemed) return;
   }
 
   const attachedFile = pendingFile;
@@ -3562,6 +3564,103 @@ function showLanguageWelcomeIfNeeded() {
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 }
+
+function setMsgStatus(wrap, state) {
+  const label = wrap && wrap.querySelector(".msg-label");
+  if (!label) return;
+  let el = label.querySelector(".msg-status");
+  if (!el) {
+    el = document.createElement("span");
+    el.className = "msg-status";
+    el.style.cssText = "display:inline-flex;vertical-align:middle;margin-left:6px;line-height:0;";
+    label.appendChild(el);
+  }
+  el.dataset.state = state;
+  const icon = (color, inner) =>
+    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  if (state === "pending") {
+    el.title = "отправляется…";
+    el.innerHTML = icon("var(--text-dim)", '<circle cx="12" cy="12" r="9"/><line x1="12" y1="12" x2="12" y2="6"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite"/></line><line x1="12" y1="12" x2="15.5" y2="12"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="12s" repeatCount="indefinite"/></line>');
+  } else if (state === "sent") {
+    el.title = "отправлено";
+    el.innerHTML = icon("var(--text-dim)", '<polyline points="20 6 9 17 4 12"/>');
+    setTimeout(() => { if (el.dataset.state === "sent") el.remove(); }, 2000);
+  } else {
+    el.title = "не отправилось";
+    el.innerHTML = icon("#e88a9a", '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>');
+  }
+}
+
+function setBtnLoading(btn, on) {
+  if (!btn) return;
+  if (on && !btn._orig) {
+    btn._orig = btn.innerHTML;
+    btn.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+    btn.style.filter = "brightness(0.6)";
+    btn.disabled = true;
+  } else if (!on && btn._orig) {
+    btn.innerHTML = btn._orig;
+    btn._orig = null;
+    btn.style.filter = "";
+    btn.disabled = false;
+  }
+}
+
+(function watchAuthRequests() {
+  const origFetch = window.fetch.bind(window);
+  let btn = null, pending = 0, timer = null;
+  document.addEventListener("submit", (e) => {
+    if (authPanel && authPanel.contains(e.target)) {
+      btn = e.submitter || e.target.querySelector('button[type="submit"]');
+    }
+  }, true);
+  window.fetch = function (...args) {
+    if (!btn) return origFetch(...args);
+    const b = btn;
+    clearTimeout(timer);
+    pending++;
+    setBtnLoading(b, true);
+    return origFetch(...args).finally(() => {
+      pending--;
+      timer = setTimeout(() => {
+        if (pending === 0) { setBtnLoading(b, false); if (btn === b) btn = null; }
+      }, 400);
+    });
+  };
+})();
+
+function addPasswordEyes() {
+  const svg = (p) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  const eyeOn = svg('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>');
+  const eyeOff = svg('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M1 1l22 22"/>');
+  ["loginPassword", "registerPassword", "codeNewPassword", "resetPassword"].forEach((id) => {
+    const field = document.getElementById(id);
+    if (!field || field.parentNode.dataset.eye) return;
+    const cs = getComputedStyle(field);
+    const wrap = document.createElement("div");
+    wrap.dataset.eye = "1";
+    wrap.style.cssText = `position:relative;display:flex;width:100%;margin:${cs.marginTop} 0 ${cs.marginBottom};`;
+    field.parentNode.insertBefore(wrap, field);
+    wrap.appendChild(field);
+    field.style.margin = "0";
+    field.style.flex = "1";
+    field.style.minWidth = "0";
+    field.style.boxSizing = "border-box";
+    field.style.paddingRight = "42px";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.setAttribute("aria-label", "показать пароль");
+    btn.style.cssText = "position:absolute;right:6px;top:50%;transform:translateY(-50%);background:transparent;border:none;color:var(--text-dim);cursor:pointer;padding:6px;line-height:0;";
+    btn.innerHTML = eyeOn;
+    btn.addEventListener("click", () => {
+      const show = field.type === "password";
+      field.type = show ? "text" : "password";
+      btn.innerHTML = show ? eyeOff : eyeOn;
+    });
+    wrap.appendChild(btn);
+  });
+}
+addPasswordEyes();
 
 (async function init() {
   checkRecoveryHash();
