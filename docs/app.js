@@ -3153,8 +3153,12 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
     addMessageToDOM("assistant", "генерация занимает необычно долго, попробуй ещё раз чуть позже.");
   } catch (err) {
     typingEl.remove();
-    addMessageToDOM("assistant", "у меня тут что-то с соединением, попробуй ещё раз.");
+    if (!(err && err.name === "AbortError")) {
+      addMessageToDOM("assistant", `у меня тут что-то с соединением: ${err && err.message ? err.message : err}. попробуй ещё раз.`);
+    }
   } finally {
+    chatAbort = null;
+    setSendState("idle");
     setStatus(false);
   }
 }
@@ -3251,7 +3255,7 @@ async function sendMessage(text, attachedFile) {
   const attachedFileData = attachedFile ? { content: attachedFile.content, title: attachedFile.title } : null;
   addMessageToDOM("user", text, { images: imagesToSend, isLongFile, fileTitle, attachedFile: attachedFileData });
   const userMsgEl = chat.lastElementChild;
-  setMsgStatus(userMsgEl, "pending");
+  setSendState("loading");
 
   // Фото загружаем в хранилище: в сообщении храним ссылки, а не тяжёлые base64-картинки.
   let imageUrls = [];
@@ -3262,6 +3266,7 @@ async function sendMessage(text, attachedFile) {
     } catch (err) {
       setStatus(false);
       userMsgEl.remove();
+      setSendState("idle");
       pendingImages = imagesToSend;
       renderAttachPreviews();
       input.value = text;
@@ -3291,10 +3296,11 @@ async function sendMessage(text, attachedFile) {
     } else {
       saveStore(store);
     }
-    setMsgStatus(userMsgEl, "sent");
-  } catch (err) {
+    } catch (err) {
     setMsgStatus(userMsgEl, "failed");
   }
+  chatAbort = new AbortController();
+  setSendState("stop");
   incrementDailyUsage(limitKey);
   renderChatsPanel();
 
@@ -3330,6 +3336,7 @@ async function sendMessage(text, attachedFile) {
 
   try {
     const res = await fetch(`${API_BASE}/chat-stream`, {
+      signal: chatAbort.signal,
       method: "POST",
       headers: authHeaders({
         "Content-Type": "application/json",
@@ -3661,6 +3668,51 @@ function addPasswordEyes() {
   });
 }
 addPasswordEyes();
+
+const sendBtnEl = form ? form.querySelector('button[type="submit"]') : null;
+let chatAbort = null;
+
+function setSendState(state) {
+  const b = sendBtnEl;
+  if (!b) return;
+  if (b._orig === undefined) b._orig = b.innerHTML;
+  b.dataset.state = state;
+  if (state === "idle") {
+    b.innerHTML = b._orig;
+    b.style.filter = "";
+    b.title = "";
+    return;
+  }
+  if (state === "loading") {
+    b.style.filter = "brightness(0.6)";
+    b.title = "отправляется…";
+    b.innerHTML =
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="12" r="9"/>' +
+      '<line x1="12" y1="12" x2="12" y2="6"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.5s" repeatCount="indefinite"/></line>' +
+      '<line x1="12" y1="12" x2="15.5" y2="12"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="12s" repeatCount="indefinite"/></line></svg>';
+  } else {
+    b.style.filter = "";
+    b.title = "остановить";
+    b.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>';
+  }
+}
+
+if (sendBtnEl) {
+  sendBtnEl.addEventListener(
+    "click",
+    (e) => {
+      const st = sendBtnEl.dataset.state;
+      if (st === "loading" || st === "stop") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (st === "stop" && chatAbort) chatAbort.abort();
+      }
+    },
+    true
+  );
+}
 
 (async function init() {
   checkRecoveryHash();
