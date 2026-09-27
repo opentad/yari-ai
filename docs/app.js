@@ -3669,6 +3669,22 @@ function addPasswordEyes() {
 }
 addPasswordEyes();
 
+
+async function sendMessage(text, attachedFile) {
+  try {
+    await sendMessageInner(text, attachedFile);
+  } catch (err) {
+    addMessageToDOM("assistant", "Не получилось отправить сообщение. Проверь соединение и попробуй ещё раз.");
+  } finally {
+    if (chatAbort && chatAbort.signal.aborted) {
+      const last = chat.lastElementChild;
+      if (last && last.classList.contains("msg-bot")) last.remove();
+    }
+    chatAbort = null;
+    setSendState("idle");
+  }
+}
+
 const sendBtnEl = form ? form.querySelector('button[type="submit"]') : null;
 let chatAbort = null;
 
