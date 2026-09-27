@@ -3226,7 +3226,7 @@ async function readChatStream(res) {
   return { reply, usedSearch };
 }
 
-async function sendMessage(text, attachedFile) {
+async function sendMessageInner(text, attachedFile) {
   const c = getActiveChat();
 
   const limitKey = isLoggedIn() ? USER_LIMIT_KEY : GUEST_LIMIT_KEY;
