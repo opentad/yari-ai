@@ -3773,3 +3773,38 @@ if (sendBtnEl) {
   applyLanguage();
   showLanguageWelcomeIfNeeded();
 })();
+
+async function handleOAuthReturn() {
+  const h = location.hash;
+  if (!h.includes("access_token=") || h.includes("type=recovery")) return;
+  const p = new URLSearchParams(h.slice(1));
+  const at = p.get("access_token");
+  if (!at) return;
+  localStorage.setItem(AUTH_TOKEN_KEY, at);
+  const rt = p.get("refresh_token");
+  if (rt) localStorage.setItem(REFRESH_TOKEN_KEY, rt);
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: ANON_KEY, Authorization: `Bearer ${at}` },
+    });
+    const u = await r.json();
+    if (u && u.email) localStorage.setItem(AUTH_EMAIL_KEY, u.email);
+  } catch (e) {}
+  history.replaceState(null, "", location.pathname + location.search);
+  await importGuestChatsIfAny();
+}
+
+function buildGoogleButton() {
+  if (!authError || !authError.parentNode) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = "Продолжить с Google";
+  btn.style.cssText =
+    "width:100%;padding:10px;margin-top:8px;border-radius:10px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:13px;";
+  btn.addEventListener("click", () => {
+    const back = encodeURIComponent(location.origin + location.pathname);
+    location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${back}`;
+  });
+  authError.parentNode.insertBefore(btn, authError);
+}
+buildGoogleButton();
