@@ -3732,6 +3732,7 @@ if (sendBtnEl) {
 
 (async function init() {
   checkRecoveryHash();
+  await handleOAuthReturn();
 
   if (isLoggedIn()) {
     try {
