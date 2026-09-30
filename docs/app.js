@@ -1160,6 +1160,7 @@ const META_KEY = "yari_chat_meta_v1";
 const GUEST_LIMIT_KEY = "yari_guest_limit_v1";
 const USER_LIMIT_KEY = "yari_user_limit_v1";
 const GUEST_ID_KEY = "yari_guest_id";
+const PENDING_IMAGE_MODE_KEY = "yari_pending_image_mode";
 const GUEST_DAILY_LIMIT = 10;
 const USER_DAILY_LIMIT = 15;
 const MIN_GAP_DAYS = 2;
@@ -3773,6 +3774,12 @@ if (sendBtnEl) {
   updateAttachVisibility();
   updateImageToolsVisibility();
 
+  const pendingImageMode = localStorage.getItem(PENDING_IMAGE_MODE_KEY);
+  if (pendingImageMode) {
+    localStorage.removeItem(PENDING_IMAGE_MODE_KEY);
+    if (isLoggedIn()) setImageMode(pendingImageMode);
+  }
+
   const activeChat = getActiveChat();
   if (activeChat) {
     activeChat.lastVisit = Date.now();
@@ -3924,7 +3931,8 @@ function ensureImageGateOverlay() {
   return overlay;
 }
 
-function openImageGateOverlay() {
+function openImageGateOverlay(mode) {
+  if (mode) localStorage.setItem(PENDING_IMAGE_MODE_KEY, mode);
   const overlay = ensureImageGateOverlay();
   overlay._authWrap.appendChild(authPanel);
   authPanel.classList.add("open");
@@ -3933,6 +3941,7 @@ function openImageGateOverlay() {
 }
 
 function closeImageGateOverlay() {
+  localStorage.removeItem(PENDING_IMAGE_MODE_KEY);
   const overlay = document.getElementById("imageGateOverlay");
   if (overlay) overlay.style.display = "none";
   authPanel.classList.remove("open");
