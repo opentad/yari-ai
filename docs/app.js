@@ -707,8 +707,12 @@ function buildImageToolsUI() {
       "display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;background:transparent;border:none;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;cursor:pointer;border-radius:7px;text-align:left;";
     item.innerHTML = `<span style="display:inline-flex;line-height:0;">${iconSvg}</span><span>${label}</span>`;
     item.addEventListener("click", () => {
-      setImageMode(mode);
       menu.style.display = "none";
+      if (!isLoggedIn()) {
+        openImageGateOverlay();
+        return;
+      }
+      setImageMode(mode);
     });
     return item;
   }
@@ -3483,7 +3487,7 @@ form.addEventListener("submit", async (e) => {
 
   if (imageMode) {
     if (!isLoggedIn()) {
-      openAuthPanelWithDemo();
+      openImageGateOverlay();
       return;
     }
     if (!text) return;
@@ -3816,39 +3820,7 @@ function ensureDemoStyles() {
   document.head.appendChild(style);
 }
 
-let authDemoEls = null;
-
-function buildAuthDemo() {
-  ensureDemoStyles();
-  const wrap = document.createElement("div");
-  wrap.id = "authDemoBlock";
-  wrap.style.cssText = "display:none;position:relative;margin-bottom:14px;";
-
-  const stage = document.createElement("div");
-  stage.style.cssText = "position:relative;height:62px;margin-bottom:8px;display:flex;align-items:flex-end;justify-content:flex-end;";
-  wrap.appendChild(stage);
-
-  const fakeInput = document.createElement("div");
-  fakeInput.style.cssText = "height:32px;border-radius:16px;border:1px solid var(--panther-line);display:flex;align-items:center;padding:0 14px;font-size:13px;color:var(--text-dim);background:var(--bg);white-space:nowrap;overflow:hidden;";
-  wrap.appendChild(fakeInput);
-
-  const anchor = authPanel.querySelector(".auth-tabs") || authPanel.firstChild;
-  authPanel.insertBefore(wrap, anchor);
-
-  const observer = new MutationObserver(() => {
-    if (!authPanel.classList.contains("open")) wrap.style.display = "none";
-  });
-  observer.observe(authPanel, { attributes: true, attributeFilter: ["class"] });
-
-  return { wrap, stage, fakeInput };
-}
-
-function ensureAuthDemo() {
-  if (!authDemoEls) authDemoEls = buildAuthDemo();
-  return authDemoEls;
-}
-
-async function runAuthDemoOnce({ stage, fakeInput }) {
+async function runImageGateDemoOnce(stage, fakeInput) {
   const demoPrompt = "нарисуй кота в очках";
   fakeInput.textContent = "";
   for (let i = 1; i <= demoPrompt.length; i++) {
@@ -3888,21 +3860,86 @@ async function runAuthDemoOnce({ stage, fakeInput }) {
   stage.innerHTML = "";
 }
 
-async function authDemoLoop() {
-  const els = ensureAuthDemo();
-  while (authPanel.classList.contains("open")) {
-    await runAuthDemoOnce(els);
-    if (!authPanel.classList.contains("open")) break;
+async function runImageGateDemoLoop(overlay) {
+  while (overlay.style.display !== "none") {
+    await runImageGateDemoOnce(overlay._demoStage, overlay._demoInput);
+    if (overlay.style.display === "none") break;
     await new Promise((r) => setTimeout(r, 400));
   }
 }
 
-function openAuthPanelWithDemo() {
-  const els = ensureAuthDemo();
-  els.wrap.style.display = "block";
+function ensureImageGateOverlay() {
+  let overlay = document.getElementById("imageGateOverlay");
+  if (overlay) return overlay;
+
+  ensureDemoStyles();
+
+  overlay = document.createElement("div");
+  overlay.id = "imageGateOverlay";
+  overlay.style.cssText =
+    "display:none;position:fixed;inset:0;z-index:9999;background:var(--panther);overflow-y:auto;flex-direction:column;padding:24px 20px 30px;";
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.textContent = "✕";
+  closeBtn.style.cssText =
+    "align-self:flex-end;width:30px;height:30px;border-radius:50%;border:1px solid var(--panther-line);background:transparent;color:var(--text-dim);font-size:14px;cursor:pointer;flex-shrink:0;margin-bottom:10px;";
+  closeBtn.addEventListener("click", closeImageGateOverlay);
+
+  const title = document.createElement("div");
+  title.style.cssText =
+    "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;color:var(--text);margin-bottom:8px;";
+  title.textContent = "Генерация изображений";
+
+  const desc = document.createElement("div");
+  desc.style.cssText = "font-size:14px;line-height:1.5;color:var(--text-dim);margin-bottom:20px;max-width:420px;";
+  desc.textContent = "Яри умеет рисовать картинки по описанию и редактировать твои фото. Вот как это выглядит:";
+
+  const demoStage = document.createElement("div");
+  demoStage.style.cssText =
+    "position:relative;height:76px;margin-bottom:8px;display:flex;align-items:flex-end;justify-content:flex-end;max-width:420px;width:100%;align-self:center;";
+
+  const demoInput = document.createElement("div");
+  demoInput.style.cssText =
+    "height:34px;border-radius:17px;border:1px solid var(--panther-line);display:flex;align-items:center;padding:0 14px;font-size:13px;color:var(--text-dim);background:var(--panther-soft);white-space:nowrap;overflow:hidden;margin-bottom:22px;max-width:420px;width:100%;align-self:center;";
+
+  const authWrap = document.createElement("div");
+  authWrap.style.cssText = "max-width:420px;width:100%;align-self:center;";
+
+  overlay.appendChild(closeBtn);
+  overlay.appendChild(title);
+  overlay.appendChild(desc);
+  overlay.appendChild(demoStage);
+  overlay.appendChild(demoInput);
+  overlay.appendChild(authWrap);
+  document.body.appendChild(overlay);
+
+  overlay._demoStage = demoStage;
+  overlay._demoInput = demoInput;
+  overlay._authWrap = authWrap;
+
+  authPanel._origParent = authPanel.parentNode;
+  authPanel._origNextSibling = authPanel.nextSibling;
+
+  return overlay;
+}
+
+function openImageGateOverlay() {
+  const overlay = ensureImageGateOverlay();
+  overlay._authWrap.appendChild(authPanel);
   authPanel.classList.add("open");
-  chatsPanel.classList.remove("open");
-  authDemoLoop();
+  overlay.style.display = "flex";
+  runImageGateDemoLoop(overlay);
+}
+
+function closeImageGateOverlay() {
+  const overlay = document.getElementById("imageGateOverlay");
+  if (overlay) overlay.style.display = "none";
+  authPanel.classList.remove("open");
+  if (authPanel._origParent) {
+    if (authPanel._origNextSibling) authPanel._origParent.insertBefore(authPanel, authPanel._origNextSibling);
+    else authPanel._origParent.appendChild(authPanel);
+  }
 }
 
 function buildGoogleButton() {
