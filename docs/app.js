@@ -780,8 +780,7 @@ function setImageMode(mode) {
 
 // Гостям инструменты изображений недоступны, как и фото.
 function updateImageToolsVisibility() {
-  if (imageToolsBtnEl) imageToolsBtnEl.style.display = isLoggedIn() ? "" : "none";
-  if (!isLoggedIn()) setImageMode(null);
+  if (imageToolsBtnEl) imageToolsBtnEl.style.display = "";
 }
 
 buildImageToolsUI();
@@ -1544,13 +1543,12 @@ function renderProfileIdentity() {
   if (isLoggedIn()) {
     if (profileEmailEl) profileEmailEl.textContent = localStorage.getItem(AUTH_EMAIL_KEY) || "";
     if (profileEditBtn) profileEditBtn.style.display = "flex";
-    refreshMyUsage();
   } else {
     if (profileEmailEl) profileEmailEl.textContent = tr("guestUser");
     if (profileEditBtn) profileEditBtn.style.display = "none";
     if (profileEditMenu) profileEditMenu.classList.remove("open");
-    removeUsageBlock();
   }
+  refreshMyUsage();
 
   if (profileLogoutBtn) profileLogoutBtn.style.display = isLoggedIn() ? "inline-flex" : "none";
   if (profileLoginCta) profileLoginCta.style.display = isLoggedIn() ? "none" : "inline-flex";
@@ -2302,14 +2300,14 @@ function renderUsagePlaceholder(container, text) {
 }
 
 async function refreshMyUsage() {
-  if (!isLoggedIn()) return;
   const usageEl = ensureUsageBlock();
   if (!usageEl) return;
 
   renderUsagePlaceholder(usageEl, "загружаю лимит…");
 
   try {
-    const res = await fetch(`${API_BASE}/my-usage`, { headers: authHeaders() });
+    const headers = isLoggedIn() ? authHeaders() : authHeaders({ "x-yari-guest": getGuestId() });
+    const res = await fetch(`${API_BASE}/my-usage`, { headers });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data || data.error) {
       renderUsagePlaceholder(usageEl, "лимит: не удалось загрузить");
@@ -3097,7 +3095,9 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
   typingLabel.textContent = "Yari";
   const typingBubble = document.createElement("div");
   typingBubble.className = "msg-bubble typing-indicator";
-  typingBubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  const progress = createProgressFrame();
+  typingBubble.appendChild(progress.el);
+  progress.start(94, 220);
   typingEl.appendChild(typingLabel);
   typingEl.appendChild(typingBubble);
   chat.appendChild(typingEl);
@@ -3113,6 +3113,7 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok || data.error) {
+      progress.stop();
       typingEl.remove();
       addMessageToDOM(
         "assistant",
@@ -3136,6 +3137,7 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
       if (!statusData) continue;
 
       if (statusData.state === "success" && statusData.resultUrl) {
+        await new Promise((resolve) => progress.finish(resolve));
         typingEl.remove();
         c.messages.push({ role: "assistant", content: "", generatedImage: statusData.resultUrl });
         if (isLoggedIn()) await persistChatToServer(c, false);
@@ -3143,15 +3145,18 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
         return;
       }
       if (statusData.state === "fail") {
+        progress.stop();
         typingEl.remove();
         addMessageToDOM("assistant", "не получилось сгенерировать картинку: " + (statusData.failMsg || "неизвестная ошибка"));
         return;
       }
     }
 
+    progress.stop();
     typingEl.remove();
-    addMessageToDOM("assistant", "генерация занимает необычно долго, попробуй ещё раз чуть позже.");
+    addMessageToDOM("assistant", "Генерация занимает необычно долго, попробуй ещё раз чуть позже.");
   } catch (err) {
+    progress.stop();
     typingEl.remove();
     if (!(err && err.name === "AbortError")) {
       addMessageToDOM("assistant", `у меня тут что-то с соединением: ${err && err.message ? err.message : err}. попробуй ещё раз.`);
@@ -3477,6 +3482,10 @@ form.addEventListener("submit", async (e) => {
   if (!text && !pendingImages.length && !pendingFile) return;
 
   if (imageMode) {
+    if (!isLoggedIn()) {
+      openAuthPanelWithDemo();
+      return;
+    }
     if (!text) return;
     if (imageMode === "edit" && !pendingImages.length) {
       addMessageToDOM("assistant", "пожалуйста, добавьте изображение");
@@ -3793,6 +3802,107 @@ async function handleOAuthReturn() {
   } catch (e) {}
   history.replaceState(null, "", location.pathname + location.search);
   await importGuestChatsIfAny();
+}
+
+function ensureDemoStyles() {
+  if (document.getElementById("yariDemoStyles")) return;
+  const style = document.createElement("style");
+  style.id = "yariDemoStyles";
+  style.textContent = `
+    @keyframes yariDemoBubbleIn { from { opacity:0; transform:translateY(8px) scale(0.9); } to { opacity:1; transform:translateY(0) scale(1); } }
+    @keyframes yariDemoFadeOut { from { opacity:1; } to { opacity:0; } }
+    @keyframes yariDemoImgIn { from { opacity:0; transform:scale(0.92); } to { opacity:1; transform:scale(1); } }
+  `;
+  document.head.appendChild(style);
+}
+
+let authDemoEls = null;
+
+function buildAuthDemo() {
+  ensureDemoStyles();
+  const wrap = document.createElement("div");
+  wrap.id = "authDemoBlock";
+  wrap.style.cssText = "display:none;position:relative;margin-bottom:14px;";
+
+  const stage = document.createElement("div");
+  stage.style.cssText = "position:relative;height:62px;margin-bottom:8px;display:flex;align-items:flex-end;justify-content:flex-end;";
+  wrap.appendChild(stage);
+
+  const fakeInput = document.createElement("div");
+  fakeInput.style.cssText = "height:32px;border-radius:16px;border:1px solid var(--panther-line);display:flex;align-items:center;padding:0 14px;font-size:13px;color:var(--text-dim);background:var(--bg);white-space:nowrap;overflow:hidden;";
+  wrap.appendChild(fakeInput);
+
+  const anchor = authPanel.querySelector(".auth-tabs") || authPanel.firstChild;
+  authPanel.insertBefore(wrap, anchor);
+
+  const observer = new MutationObserver(() => {
+    if (!authPanel.classList.contains("open")) wrap.style.display = "none";
+  });
+  observer.observe(authPanel, { attributes: true, attributeFilter: ["class"] });
+
+  return { wrap, stage, fakeInput };
+}
+
+function ensureAuthDemo() {
+  if (!authDemoEls) authDemoEls = buildAuthDemo();
+  return authDemoEls;
+}
+
+async function runAuthDemoOnce({ stage, fakeInput }) {
+  const demoPrompt = "нарисуй кота в очках";
+  fakeInput.textContent = "";
+  for (let i = 1; i <= demoPrompt.length; i++) {
+    fakeInput.textContent = demoPrompt.slice(0, i);
+    await new Promise((r) => setTimeout(r, 28));
+  }
+  await new Promise((r) => setTimeout(r, 250));
+
+  const bubble = document.createElement("div");
+  bubble.textContent = demoPrompt;
+  bubble.style.cssText = "max-width:80%;padding:8px 12px;border-radius:14px;background:var(--lavender);color:var(--on-accent);font-size:13px;animation:yariDemoBubbleIn 0.3s ease;";
+  stage.innerHTML = "";
+  stage.appendChild(bubble);
+  fakeInput.textContent = "";
+
+  await new Promise((r) => setTimeout(r, 350));
+
+  const progress = createProgressFrame();
+  stage.innerHTML = "";
+  progress.el.style.animation = "yariDemoBubbleIn 0.25s ease";
+  stage.appendChild(progress.el);
+  progress.start(94, 60);
+
+  await new Promise((r) => setTimeout(r, 1400));
+  await new Promise((resolve) => progress.finish(resolve));
+
+  const img = document.createElement("div");
+  img.style.cssText = "width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--peach),var(--lavender));animation:yariDemoImgIn 0.3s ease;";
+  stage.innerHTML = "";
+  stage.appendChild(img);
+
+  await new Promise((r) => setTimeout(r, 900));
+
+  stage.style.animation = "yariDemoFadeOut 0.3s ease forwards";
+  await new Promise((r) => setTimeout(r, 300));
+  stage.style.animation = "";
+  stage.innerHTML = "";
+}
+
+async function authDemoLoop() {
+  const els = ensureAuthDemo();
+  while (authPanel.classList.contains("open")) {
+    await runAuthDemoOnce(els);
+    if (!authPanel.classList.contains("open")) break;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
+function openAuthPanelWithDemo() {
+  const els = ensureAuthDemo();
+  els.wrap.style.display = "block";
+  authPanel.classList.add("open");
+  chatsPanel.classList.remove("open");
+  authDemoLoop();
 }
 
 function buildGoogleButton() {
