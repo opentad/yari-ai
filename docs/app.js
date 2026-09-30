@@ -3080,6 +3080,36 @@ function openImageLightbox(url) {
 const IMAGE_POLL_INTERVAL_MS = 3000;
 const IMAGE_POLL_TIMEOUT_MS = 120000;
 
+function createProgressFrame() {
+  const el = document.createElement("div");
+  el.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:56px;height:26px;padding:0 10px;border:1.5px solid var(--lavender);border-radius:13px;font-size:12px;font-family:inherit;color:var(--lavender);letter-spacing:0.3px;background:transparent;";
+  el.textContent = "0%";
+  let pct = 0;
+  let timer = null;
+  function clear() { if (timer) { clearInterval(timer); timer = null; } }
+  function start(capAt = 94, stepMs = 150) {
+    clear();
+    timer = setInterval(() => {
+      pct = Math.min(capAt, pct + 1);
+      el.textContent = pct + "%";
+      if (pct >= capAt) clear();
+    }, stepMs);
+  }
+  function finish(onDone) {
+    clear();
+    timer = setInterval(() => {
+      pct = Math.min(100, pct + 3);
+      el.textContent = pct + "%";
+      if (pct >= 100) {
+        clear();
+        if (onDone) onDone();
+      }
+    }, 16);
+  }
+  function stop() { clear(); }
+  return { el, start, finish, stop };
+}
+
 async function handleGenerateImageFlow(promptText, mode, sourceImage) {
   const c = getActiveChat();
 
