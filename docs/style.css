@@ -33,6 +33,8 @@
   /* настраиваемые в профиле */
   --user-bubble-color: var(--peach);
   --bubble-radius: 14px;
+  --gen-card-bg: linear-gradient(160deg, #1a1424, #0d0a13);
+  --gen-card-border: rgba(255, 255, 255, 0.07);
 
   /* неоморфизм: тени (тёмная тема) */
   --neo-raised: 6px 6px 14px rgba(0, 0, 0, 0.55), -5px -5px 12px rgba(255, 255, 255, 0.045);
@@ -62,6 +64,8 @@
   --glow-2: rgba(185, 166, 232, 0.34);
   --glow-3: rgba(185, 166, 232, 0.14);
   --divider-subtle: rgba(0, 0, 0, 0.08);
+  --gen-card-bg: linear-gradient(160deg, #ecdfe2, #e2d3d8);
+  --gen-card-border: rgba(0, 0, 0, 0.06);
   --neo-raised: 6px 6px 14px rgba(200, 165, 178, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.95);
   --neo-raised-sm: 3px 3px 7px rgba(200, 165, 178, 0.5), -3px -3px 7px rgba(255, 255, 255, 0.95);
   --neo-inset: inset 4px 4px 9px rgba(200, 165, 178, 0.55), inset -4px -4px 9px rgba(255, 255, 255, 0.9);
@@ -1684,3 +1688,5 @@ textarea:focus-visible {
   background: linear-gradient(135deg, var(--peach), var(--lavender));
   box-shadow: var(--neo-raised-sm);
 }
+
+.auth-error:empty { display: none; }
