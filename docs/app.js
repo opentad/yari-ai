@@ -3110,6 +3110,87 @@ function createProgressFrame() {
   return { el, start, finish, stop };
 }
 
+function ensureGenCardStyles() {
+  if (document.getElementById("yariGenCardStyles")) return;
+  const s = document.createElement("style");
+  s.id = "yariGenCardStyles";
+  s.textContent =
+    "@keyframes yariGenSpin{to{transform:rotate(360deg);}}" +
+    "@keyframes yariGenGrid{0%,100%{opacity:.25;}50%{opacity:.55;}}";
+  document.head.appendChild(s);
+}
+
+function createImageGenCard() {
+  ensureGenCardStyles();
+  const el = document.createElement("div");
+  el.style.cssText = "position:relative;width:min(70vw,420px);aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,#1a1424,#0d0a13);border:1px solid rgba(255,255,255,0.07);box-sizing:border-box;";
+
+  const slot = document.createElement("div");
+  slot.style.cssText = "position:absolute;left:16px;top:14px;width:64px;height:30px;";
+  el.appendChild(slot);
+
+  const pill = document.createElement("div");
+  pill.style.cssText = "position:absolute;left:0;top:2px;display:flex;align-items:center;justify-content:center;min-width:56px;height:26px;padding:0 10px;box-sizing:border-box;border:1.5px solid var(--lavender);border-radius:13px;font-size:12px;color:var(--lavender);letter-spacing:0.3px;opacity:0;transform:scale(0.85);transition:opacity .35s ease .15s,transform .35s ease .15s;";
+  pill.textContent = "0%";
+  slot.appendChild(pill);
+
+  const ring = document.createElement("div");
+  ring.style.cssText = "position:absolute;left:15px;top:15px;width:0;height:0;animation:yariGenSpin 1s linear infinite;";
+  slot.appendChild(ring);
+
+  const N = 10;
+  const dots = [];
+  for (let i = 0; i < N; i++) {
+    const d = document.createElement("div");
+    d.style.cssText = "position:absolute;left:0;top:0;width:3.5px;height:3.5px;margin:-1.75px 0 0 -1.75px;border-radius:50%;background:var(--lavender);transition:transform .55s cubic-bezier(.3,.7,.2,1),opacity .4s ease;";
+    ring.appendChild(d);
+    dots.push(d);
+  }
+  const ringPos = (i) => [Math.cos((i / N) * Math.PI * 2) * 9, Math.sin((i / N) * Math.PI * 2) * 9];
+  const scatterPos = (i) => [-15 + ((i * 37) % 64), -13 + ((i * 23) % 26)];
+  let mode = null;
+  function setMode(m) {
+    if (m === mode) return;
+    mode = m;
+    dots.forEach((d, i) => {
+      const [x, y] = m === "loader" ? ringPos(i) : scatterPos(i);
+      d.style.transform = `translate(${x}px,${y}px)`;
+      d.style.opacity = m === "loader" ? String(0.25 + 0.75 * (i / (N - 1))) : "0";
+    });
+    pill.style.opacity = m === "scale" ? "1" : "0";
+    pill.style.transform = m === "scale" ? "scale(1)" : "scale(0.85)";
+  }
+  setMode("loader");
+
+  let pct = 0;
+  let raf = null;
+  function clearRaf() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
+  function setPct(v) { pct = v; pill.textContent = v + "%"; }
+  function showScale() {
+    setMode("scale");
+    clearRaf();
+    const t0 = performance.now();
+    (function tick(now) {
+      const v = Math.min(94, Math.floor(94 * (1 - Math.exp(-(now - t0) / 20000))));
+      if (v > pct) setPct(v);
+      raf = requestAnimationFrame(tick);
+    })(t0);
+  }
+  function finish(onDone) {
+    clearRaf();
+    setMode("scale");
+    const from = pct;
+    const t0 = performance.now();
+    (function step(now) {
+      const k = Math.min(1, (now - t0) / 1000);
+      setPct(Math.round(from + (100 - from) * k));
+      if (k < 1) raf = requestAnimationFrame(step);
+      else setTimeout(() => { if (onDone) onDone(); }, 150);
+    })(t0);
+  }
+  return { el, setMode, showScale, finish, stop: clearRaf };
+}
+
 async function handleGenerateImageFlow(promptText, mode, sourceImage) {
   const c = getActiveChat();
 
@@ -3130,9 +3211,9 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
   typingLabel.textContent = "Yari";
   const typingBubble = document.createElement("div");
   typingBubble.className = "msg-bubble typing-indicator";
-  const progress = createProgressFrame();
+  const progress = createImageGenCard();
+  typingBubble.className = "msg-bubble";
   typingBubble.appendChild(progress.el);
-  progress.start(94, 220);
   typingEl.appendChild(typingLabel);
   typingEl.appendChild(typingBubble);
   chat.appendChild(typingEl);
@@ -3161,6 +3242,7 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
     updateRemainingGensDisplay();
 
     const taskId = data.taskId;
+    progress.showScale();
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < IMAGE_POLL_TIMEOUT_MS) {
