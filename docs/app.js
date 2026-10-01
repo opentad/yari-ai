@@ -964,7 +964,7 @@ const I18N = {
     profileTitle: "Профиль",
     login: "Войти",
     guestUser: "Пользователь",
-    guestBannerText: "Гостевой режим: 1 чат, до 10 сообщений в день",
+    guestBannerText: "Гостевой режим: 1 чат, до 2000 токенов в день",
     guestBannerBtn: "Войти / зарегистрироваться",
     bubbleColorLabel: "Цвет твоих баблов",
     bubbleRadiusLabel: "Угловатость баблов",
@@ -1005,7 +1005,7 @@ const I18N = {
     profileTitle: "Profile",
     login: "Log in",
     guestUser: "User",
-    guestBannerText: "Guest mode: 1 chat, up to 10 messages a day",
+    guestBannerText: "Guest mode: 1 chat, up to 2,000 tokens a day",
     guestBannerBtn: "Log in / sign up",
     bubbleColorLabel: "Your bubble color",
     bubbleRadiusLabel: "Bubble roundness",
@@ -1846,7 +1846,14 @@ async function importGuestChatsIfAny() {
 }
 
 function showAuthError(msg) {
-  if (authError) authError.textContent = msg || "";
+  if (!authError) return;
+  authError.textContent = msg || "";
+  const forms = [loginForm, registerForm, forgotForm, resetForm, codeForm, confirmForm];
+  const active = forms.find((f) => f && getComputedStyle(f).display !== "none");
+  const submit = active && (active.querySelector('button[type="submit"]') || active.querySelector("button"));
+  if (submit && submit.parentNode && authError.nextElementSibling !== submit) {
+    submit.parentNode.insertBefore(authError, submit);
+  }
 }
 
 let confirmForm = null;
@@ -1952,8 +1959,7 @@ function buildConfirmForm() {
   confirmForm.appendChild(backBtn);
   confirmForm._codeField = codeField;
 
-  if (authError && authError.parentNode) authError.parentNode.insertBefore(confirmForm, authError);
-  else if (authPanel) authPanel.appendChild(confirmForm);
+  if (authPanel) authPanel.appendChild(confirmForm);
 }
 
 function showConfirmStep(email) {
@@ -3080,6 +3086,15 @@ function openImageLightbox(url) {
 const IMAGE_POLL_INTERVAL_MS = 3000;
 const IMAGE_POLL_TIMEOUT_MS = 120000;
 
+function preloadImage(url, timeoutMs = 40000) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    const t = setTimeout(resolve, timeoutMs);
+    im.onload = im.onerror = () => { clearTimeout(t); resolve(); };
+    im.src = url;
+  });
+}
+
 function createProgressFrame() {
   const el = document.createElement("div");
   el.style.cssText = "display:inline-flex;align-items:center;justify-content:center;min-width:56px;height:26px;padding:0 10px;border:1.5px solid var(--lavender);border-radius:13px;font-size:12px;font-family:inherit;color:var(--lavender);letter-spacing:0.3px;background:transparent;";
@@ -3120,10 +3135,10 @@ function ensureGenCardStyles() {
   document.head.appendChild(s);
 }
 
-function createImageGenCard() {
+function createImageGenCard(widthCss = "min(70vw,420px)") {
   ensureGenCardStyles();
   const el = document.createElement("div");
-  el.style.cssText = "position:relative;width:min(70vw,420px);aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:linear-gradient(160deg,#1a1424,#0d0a13);border:1px solid rgba(255,255,255,0.07);box-sizing:border-box;";
+  el.style.cssText = "position:relative;width:" + widthCss + ";aspect-ratio:1/1;border-radius:14px;overflow:hidden;background:var(--gen-card-bg);border:1px solid var(--gen-card-border);box-sizing:border-box;";
 
   const slot = document.createElement("div");
   slot.style.cssText = "position:absolute;left:16px;top:14px;width:64px;height:30px;";
@@ -3254,6 +3269,7 @@ async function handleGenerateImageFlow(promptText, mode, sourceImage) {
       if (!statusData) continue;
 
       if (statusData.state === "success" && statusData.resultUrl) {
+        await preloadImage(statusData.resultUrl);
         await new Promise((resolve) => progress.finish(resolve));
         typingEl.remove();
         c.messages.push({ role: "assistant", content: "", generatedImage: statusData.resultUrl });
@@ -3351,19 +3367,6 @@ async function readChatStream(res) {
 async function sendMessageInner(text, attachedFile) {
   const c = getActiveChat();
 
-  const limitKey = isLoggedIn() ? USER_LIMIT_KEY : GUEST_LIMIT_KEY;
-  const dailyLimit = isLoggedIn() ? USER_DAILY_LIMIT : GUEST_DAILY_LIMIT;
-  const usage = getDailyUsage(limitKey);
-  if (usage.count >= dailyLimit) {
-    addMessageToDOM(
-      "assistant",
-      isLoggedIn()
-        ? `на сегодня лимит сообщений исчерпан (${USER_DAILY_LIMIT} в день) — общий бюджет ии на день небольшой, возвращайся завтра.`
-        : `на сегодня гостевой лимит сообщений исчерпан (${GUEST_DAILY_LIMIT} в день). зарегистрируйся — с аккаунтом лимит выше (${USER_DAILY_LIMIT} в день).`
-    );
-    return;
-  }
-
   if (looksLikeProactiveOff(text)) {
     c.proactiveOff = true;
     if (isLoggedIn()) updateChatMeta(c.id, { proactiveOff: true });
@@ -3423,7 +3426,6 @@ async function sendMessageInner(text, attachedFile) {
   }
   chatAbort = new AbortController();
   setSendState("stop");
-  incrementDailyUsage(limitKey);
   renderChatsPanel();
 
   const typingEl = document.createElement("div");
@@ -3497,8 +3499,9 @@ async function sendMessageInner(text, attachedFile) {
         addMessageToDOM(
           "assistant",
           errData.limitReached
-            ? "на сегодня твой лимит токенов исчерпан, возвращайся завтра."
-            : `у меня тут что-то с соединением (код ${res.status}). попробуй ещё раз.`
+            ? (isLoggedIn()
+                ? "на сегодня твой лимит токенов исчерпан (6000 в день), возвращайся завтра."
+                : "на сегодня гостевой лимит токенов исчерпан (2000 в день). зарегистрируйся: с аккаунтом лимит 6000 токенов в день.")
         );
       } else {
         addMessageToDOM("assistant", `у меня тут что-то с соединением (код ${res.status}). попробуй ещё раз.`);
@@ -3934,57 +3937,110 @@ function ensureDemoStyles() {
   style.textContent = `
     @keyframes yariDemoBubbleIn { from { opacity:0; transform:translateY(8px) scale(0.9); } to { opacity:1; transform:translateY(0) scale(1); } }
     @keyframes yariDemoFadeOut { from { opacity:1; } to { opacity:0; } }
-    @keyframes yariDemoImgIn { from { opacity:0; transform:scale(0.92); } to { opacity:1; transform:scale(1); } }
+    @keyframes yariDemoImgIn { from { opacity:0; } to { opacity:1; } }
+    @media (orientation: landscape) {
+      #imageGateOverlay { padding-top: 14px !important; }
+      #imageGateClose { position: absolute !important; top: 14px; right: 16px; margin: 0 !important; }
+    }
   `;
   document.head.appendChild(style);
 }
 
-async function runImageGateDemoOnce(stage, fakeInput) {
-  const demoPrompt = "нарисуй кота в очках";
+const DEMO_PROMPT = "Рыжий кот в круглых очках сидит за деревянным столом и читает книгу при свете свечи, уютная комната, тёплое освещение. Детализированная иллюстрация, стиль: акварель";
+const DEMO_IMAGE_SRC = "cat.jpg";
+const demoSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runImageGateDemoOnce(overlay) {
+  const stage = overlay._demoStage;
+  const fakeInput = overlay._demoInput;
+  const alive = () => overlay.style.display !== "none";
+
+  stage.innerHTML = "";
   fakeInput.textContent = "";
-  for (let i = 1; i <= demoPrompt.length; i++) {
-    fakeInput.textContent = demoPrompt.slice(0, i);
-    await new Promise((r) => setTimeout(r, 28));
+  for (let i = 1; i <= DEMO_PROMPT.length; i++) {
+    if (!alive()) return;
+    fakeInput.textContent = DEMO_PROMPT.slice(0, i);
+    fakeInput.scrollLeft = fakeInput.scrollWidth;
+    await demoSleep(16);
   }
-  await new Promise((r) => setTimeout(r, 250));
+  await demoSleep(300);
+  if (!alive()) return;
 
   const bubble = document.createElement("div");
-  bubble.textContent = demoPrompt;
-  bubble.style.cssText = "max-width:80%;padding:8px 12px;border-radius:14px;background:var(--lavender);color:var(--on-accent);font-size:13px;animation:yariDemoBubbleIn 0.3s ease;";
-  stage.innerHTML = "";
+  bubble.textContent = DEMO_PROMPT;
+  bubble.style.cssText = "align-self:flex-end;max-width:85%;padding:8px 12px;border-radius:14px 4px 14px 14px;background:var(--user-bubble-color,var(--lavender));color:var(--on-accent);font-size:12px;line-height:1.4;animation:yariDemoBubbleIn 0.3s ease;";
   stage.appendChild(bubble);
   fakeInput.textContent = "";
+  await demoSleep(450);
+  if (!alive()) return;
 
-  await new Promise((r) => setTimeout(r, 350));
+  const card = createImageGenCard("min(55vw,240px)");
+  card.el.style.alignSelf = "flex-start";
+  card.el.style.animation = "yariDemoBubbleIn 0.3s ease";
+  stage.appendChild(card.el);
+  await demoSleep(1300);
+  if (!alive()) { card.stop(); return; }
+  card.showScale();
+  await demoSleep(2500);
+  if (!alive()) { card.stop(); return; }
+  await new Promise((resolve) => card.finish(resolve));
+  if (!alive()) return;
 
-  const progress = createProgressFrame();
-  stage.innerHTML = "";
-  progress.el.style.animation = "yariDemoBubbleIn 0.25s ease";
-  stage.appendChild(progress.el);
-  progress.start(94, 60);
+  const img = document.createElement("img");
+  img.src = DEMO_IMAGE_SRC;
+  img.alt = "";
+  img.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:yariDemoImgIn 0.5s ease;";
+  card.el.appendChild(img);
 
-  await new Promise((r) => setTimeout(r, 1400));
-  await new Promise((resolve) => progress.finish(resolve));
-
-  const img = document.createElement("div");
-  img.style.cssText = "width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--peach),var(--lavender));animation:yariDemoImgIn 0.3s ease;";
-  stage.innerHTML = "";
-  stage.appendChild(img);
-
-  await new Promise((r) => setTimeout(r, 900));
-
+  await demoSleep(5000);
+  if (!alive()) return;
   stage.style.animation = "yariDemoFadeOut 0.3s ease forwards";
-  await new Promise((r) => setTimeout(r, 300));
+  await demoSleep(300);
   stage.style.animation = "";
   stage.innerHTML = "";
 }
 
 async function runImageGateDemoLoop(overlay) {
+  if (overlay._demoRunning) return;
+  overlay._demoRunning = true;
   while (overlay.style.display !== "none") {
-    await runImageGateDemoOnce(overlay._demoStage, overlay._demoInput);
+    await runImageGateDemoOnce(overlay);
     if (overlay.style.display === "none") break;
-    await new Promise((r) => setTimeout(r, 400));
+    await demoSleep(400);
   }
+  overlay._demoRunning = false;
+}
+
+function stopTitleSwap(overlay) {
+  if (overlay && overlay._titleTimer) { clearInterval(overlay._titleTimer); overlay._titleTimer = null; }
+}
+
+function startTitleSwap(overlay) {
+  stopTitleSwap(overlay);
+  const word = overlay._titleWord;
+  const box = overlay._titleBox;
+  const words = ["Генерация", "Редактирование"];
+  let idx = 0;
+  word.textContent = words[0];
+  word.style.transition = "none";
+  word.style.transform = "translateX(0)";
+  word.style.opacity = "1";
+  box.style.width = word.offsetWidth + "px";
+  overlay._titleTimer = setInterval(async () => {
+    idx = (idx + 1) % words.length;
+    word.style.transition = "transform .35s ease, opacity .35s ease";
+    word.style.transform = "translateX(-60%)";
+    word.style.opacity = "0";
+    await demoSleep(350);
+    word.style.transition = "none";
+    word.textContent = words[idx];
+    word.style.transform = "translateX(60%)";
+    box.style.width = word.offsetWidth + "px";
+    void word.offsetWidth;
+    word.style.transition = "transform .35s ease, opacity .35s ease";
+    word.style.transform = "translateX(0)";
+    word.style.opacity = "1";
+  }, 3500);
 }
 
 function ensureImageGateOverlay() {
@@ -3999,6 +4055,7 @@ function ensureImageGateOverlay() {
     "display:none;position:fixed;inset:0;z-index:9999;background:var(--panther);overflow-y:auto;flex-direction:column;padding:24px 20px 30px;";
 
   const closeBtn = document.createElement("button");
+  closeBtn.id = "imageGateClose";
   closeBtn.type = "button";
   closeBtn.textContent = "✕";
   closeBtn.style.cssText =
@@ -4008,26 +4065,38 @@ function ensureImageGateOverlay() {
   const title = document.createElement("div");
   title.style.cssText =
     "font-family:'Fraunces',serif;font-style:italic;font-weight:600;font-size:24px;color:var(--text);margin-bottom:8px;";
-  title.textContent = "Генерация изображений";
+  const titleBox = document.createElement("span");
+  titleBox.style.cssText = "display:inline-block;overflow:hidden;vertical-align:bottom;white-space:nowrap;transition:width .35s ease;padding-right:2px;";
+  const titleWord = document.createElement("span");
+  titleWord.style.cssText = "display:inline-block;";
+  titleWord.textContent = "Генерация";
+  titleBox.appendChild(titleWord);
+  title.appendChild(titleBox);
+  title.appendChild(document.createTextNode(" изображений"));
 
   const desc = document.createElement("div");
-  desc.style.cssText = "font-size:14px;line-height:1.5;color:var(--text-dim);margin-bottom:20px;max-width:420px;";
+  desc.style.cssText = "font-size:14px;line-height:1.5;color:var(--text-dim);margin-bottom:6px;max-width:420px;";
   desc.textContent = "Яри умеет рисовать картинки по описанию и редактировать твои фото. Вот как это выглядит:";
+
+  const note = document.createElement("div");
+  note.style.cssText = "font-size:11px;color:var(--text-dim);opacity:0.8;margin-bottom:20px;";
+  note.textContent = "Бесплатно: 2 картинки в день";
 
   const demoStage = document.createElement("div");
   demoStage.style.cssText =
-    "position:relative;height:76px;margin-bottom:8px;display:flex;align-items:flex-end;justify-content:flex-end;max-width:420px;width:100%;align-self:center;";
+    "display:flex;flex-direction:column;gap:10px;min-height:340px;margin-bottom:8px;max-width:420px;width:100%;align-self:center;";
 
   const demoInput = document.createElement("div");
   demoInput.style.cssText =
-    "height:34px;border-radius:17px;border:1px solid var(--panther-line);display:flex;align-items:center;padding:0 14px;font-size:13px;color:var(--text-dim);background:var(--panther-soft);white-space:nowrap;overflow:hidden;margin-bottom:22px;max-width:420px;width:100%;align-self:center;";
+    "height:34px;border-radius:17px;border:1px solid var(--panther-line);display:flex;align-items:center;padding:0 14px;font-size:13px;color:var(--text-dim);background:var(--panther-soft);white-space:nowrap;overflow:hidden;margin-bottom:22px;max-width:420px;width:100%;align-self:center;flex-shrink:0;";
 
   const authWrap = document.createElement("div");
-  authWrap.style.cssText = "max-width:420px;width:100%;align-self:center;";
+  authWrap.style.cssText = "max-width:420px;width:100%;align-self:center;margin-top:auto;padding-top:16px;";
 
   overlay.appendChild(closeBtn);
   overlay.appendChild(title);
   overlay.appendChild(desc);
+  overlay.appendChild(note);
   overlay.appendChild(demoStage);
   overlay.appendChild(demoInput);
   overlay.appendChild(authWrap);
@@ -4036,6 +4105,8 @@ function ensureImageGateOverlay() {
   overlay._demoStage = demoStage;
   overlay._demoInput = demoInput;
   overlay._authWrap = authWrap;
+  overlay._titleBox = titleBox;
+  overlay._titleWord = titleWord;
 
   authPanel._origParent = authPanel.parentNode;
   authPanel._origNextSibling = authPanel.nextSibling;
@@ -4048,15 +4119,18 @@ function openImageGateOverlay(mode) {
   const overlay = ensureImageGateOverlay();
   overlay._authWrap.appendChild(authPanel);
   authPanel.classList.add("open");
+  authPanel.style.cssText = "background:transparent;border:none;box-shadow:none;max-height:none;overflow:visible;padding:0;";
   overlay.style.display = "flex";
+  startTitleSwap(overlay);
   runImageGateDemoLoop(overlay);
 }
 
 function closeImageGateOverlay() {
   localStorage.removeItem(PENDING_IMAGE_MODE_KEY);
   const overlay = document.getElementById("imageGateOverlay");
-  if (overlay) overlay.style.display = "none";
+  if (overlay) { overlay.style.display = "none"; stopTitleSwap(overlay); }
   authPanel.classList.remove("open");
+  authPanel.style.cssText = "";
   if (authPanel._origParent) {
     if (authPanel._origNextSibling) authPanel._origParent.insertBefore(authPanel, authPanel._origNextSibling);
     else authPanel._origParent.appendChild(authPanel);
