@@ -4146,12 +4146,31 @@ function buildGoogleButton() {
   btn.style.cssText =
     "display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:10px;margin-top:8px;border-radius:10px;border:1px solid var(--panther-line);background:transparent;color:var(--text);cursor:pointer;font-size:13px;";
   btn.addEventListener("click", () => {
-    const back = encodeURIComponent(location.origin + location.pathname);
-    location.href = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${back}`;
+    const cap = window.Capacitor;
+    const isApp = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
+    const back = encodeURIComponent(isApp ? "com.yari.app://login-callback" : location.origin + location.pathname);
+    const url = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${back}`;
+    if (isApp && cap.Plugins && cap.Plugins.Browser) cap.Plugins.Browser.open({ url });
+    else location.href = url;
   });
   authError.parentNode.insertBefore(btn, authError);
 }
 buildGoogleButton();
+
+(function listenNativeOAuth() {
+  const cap = window.Capacitor;
+  if (!(cap && cap.isNativePlatform && cap.isNativePlatform() && cap.Plugins && cap.Plugins.App)) return;
+  cap.Plugins.App.addListener("appUrlOpen", async (ev) => {
+    const url = (ev && ev.url) || "";
+    if (url.indexOf("com.yari.app://login-callback") !== 0) return;
+    const i = url.indexOf("#");
+    if (i < 0) return;
+    history.replaceState(null, "", location.pathname + location.search + url.slice(i));
+    await handleOAuthReturn();
+    try { await cap.Plugins.Browser.close(); } catch (e) {}
+    location.reload();
+  });
+})();
 
 if (forgotPasswordLink) {
   forgotPasswordLink.style.fontSize = "11px";
