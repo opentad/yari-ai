@@ -15,9 +15,10 @@ jobs:
       - name: Capacitor
         run: |
           npm init -y
-          npm i @capacitor/core @capacitor/cli @capacitor/android
+          npm i @capacitor/core @capacitor/cli @capacitor/android @capacitor/app @capacitor/browser
           npx cap init Yari com.yari.app --web-dir=docs
           npx cap add android
+          sed -i 's#</activity>#<intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="com.yari.app" android:host="login-callback"/></intent-filter></activity>#' android/app/src/main/AndroidManifest.xml
           npx cap sync android
       - name: Build
         run: cd android && ./gradlew assembleDebug
