@@ -160,10 +160,10 @@
         </svg>
       </button>
 
-      <div style="margin-top:14px; font-size:12px; line-height:1.6; opacity:.6; text-align:center;">
-        <a href="oferta.html" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">Публичная оферта</a>
-        &nbsp;&nbsp;
-        <a href="privacy.html" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">Политика конфиденциальности</a>
+      <div style="margin-top:12px; display:flex; flex-wrap:wrap; justify-content:center; gap:4px 12px; font-size:10.5px; line-height:1.5; opacity:.45;">
+        <a href="oferta.html" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">Оферта</a>
+        <a href="privacy.html" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">Конфиденциальность</a>
+        <a href="tarify.html" class="web-only" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">Тарифы</a>
       </div>
     </div>
 
@@ -219,7 +219,7 @@
         <button type="submit">сохранить новый пароль</button>
       </form>
       <div class="auth-error" id="authError"></div>
-      <div style="margin-top:12px; font-size:12px; line-height:1.5; opacity:.6; text-align:center;">
+      <div style="margin-top:12px; font-size:11px; line-height:1.5; opacity:.5; text-align:center;">
         Входя или регистрируясь, вы принимаете
         <a href="oferta.html" target="_blank" rel="noopener" style="color:inherit; text-decoration:underline;">оферту</a>
         и
@@ -253,6 +253,15 @@
         });
       });
     }
+  </script>
+  <script>
+    (function () {
+      var cap = window.Capacitor;
+      var isApp = cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform();
+      if (isApp) {
+        document.querySelectorAll('.web-only').forEach(function (el) { el.style.display = 'none'; });
+      }
+    })();
   </script>
 </body>
 </html>
